@@ -102,6 +102,8 @@ button:hover, .btn:hover { opacity: 0.9; }
 
 .report-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.check-label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.export-item { border: 1px dashed var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
 
 .filter-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
 .filter-row input, .filter-row select {

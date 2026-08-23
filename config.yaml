@@ -48,3 +48,7 @@ scoring:
 
 report:
   languages: [zh, en]                   # 默认输出语言，可 zh / en / 两者
+
+export:
+  accurate: false                       # false=无损快速剪切（关键帧对齐）；true=重编码精切
+  concurrency: 1                        # 同时导出切片数量；输出目录固定为 data/tasks/{task_id}/exports

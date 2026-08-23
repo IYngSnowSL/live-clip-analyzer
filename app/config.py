@@ -39,6 +39,10 @@ DEFAULTS: dict[str, Any] = {
         "max_sentence_candidates": 30,
     },
     "report": {"languages": ["zh", "en"]},
+    "export": {
+        "accurate": False,       # False=无损快速剪切（关键帧对齐），True=重编码精切
+        "concurrency": 1,        # 同时导出几个切片
+    },
 }
 
 

@@ -194,7 +194,12 @@ async def run_task(task_id: str) -> None:
 
         # 10. 报告
         task = get_task(task_id) or task
-        languages = json.loads(task.get("output_languages") or '["zh","en"]')
+        try:
+            languages = json.loads(task.get("output_languages") or '["zh","en"]')
+            if not isinstance(languages, list) or not languages:
+                languages = ["zh", "en"]
+        except (TypeError, ValueError):
+            languages = ["zh", "en"]
         await asyncio.to_thread(build_reports, task, scenes, all_candidates, tdir, languages)
         export_path = tdir / "export.json"
         export_path.write_text(

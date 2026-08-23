@@ -57,6 +57,10 @@
           <a id="link-report-en" class="btn" target="_blank">Export EN Markdown</a>
           <a id="link-export-json" class="btn" target="_blank">导出 JSON</a>
         </div>
+        <div class="actions">
+          <label class="check-label"><input type="checkbox" id="export-accurate" /> 精切模式（重编码，较慢）</label>
+          <button id="btn-export-all">批量导出全部候选</button>
+        </div>
       </div>
       <div id="report-status" class="muted"></div>
 
@@ -79,6 +83,9 @@
 
       <h3>💬 单句素材候选</h3>
       <div id="sentence-candidates" class="candidates"></div>
+
+      <h3>📦 导出结果</h3>
+      <div id="export-results" class="candidates"></div>
     </section>
   </main>
 

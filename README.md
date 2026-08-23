@@ -10,6 +10,7 @@
 - 输出长切片候选 + 单句二创素材候选
 - Web 页面人工复核微调
 - 导出 Markdown 报告 + JSON 数据
+- 视频切片导出：无损快速剪切 / 精切重编码两种模式
 
 ## 环境要求
 
@@ -60,6 +61,7 @@ python run.py
 3. 查看报告页：详细时间轴、长切片候选、单句素材候选。点击时间段可跳转视频预览。
 4. 对候选进行人工微调（起止时间、标题、评分、推荐等级）。
 5. 导出 Markdown / JSON。
+6. 导出视频切片：在候选卡片点击“导出此切片”，或点击“批量导出全部候选”；勾选“精切模式”可重编码精切，否则默认无损快速剪切。导出结果在页面底部下载。
 
 ## 创建私密 GitHub 仓库
 
@@ -85,7 +87,7 @@ live-clip-analyzer/
 │   ├── database.py              # SQLite
 │   ├── models.py                # 数据访问
 │   ├── api/                     # 接口
-│   ├── services/                # 核心业务：弹幕/场景/ASR/视觉/评分/报告
+│   ├── services/                # 核心业务：弹幕/场景/ASR/视觉/评分/报告/导出
 │   ├── workers/                 # 后台任务主流程
 │   └── web/                     # 前端页面
 ├── data/                        # 任务产物（默认 gitignore）
@@ -94,6 +96,27 @@ live-clip-analyzer/
 └── run.py
 ```
 
-## 视频导出预留
+## 视频切片导出
 
-当前不实现视频导出。`app/services/` 下已预留结构，后续可新增 `exporter.py`，调用 FFmpeg 按候选起止时间裁剪视频。
+`app/services/exporter.py` 提供：
+
+- `export_clip()`：单切片导出
+- `export_clips()`：批量导出（单个失败不影响其他切片）
+- 快速模式：`-c copy` 无损流复制，速度接近文件复制，起点对齐到关键帧
+- 精切模式：`libx264 + aac` 重编码，起点更准确但较慢
+
+API：
+
+```text
+POST /api/tasks/{task_id}/export
+Body: {"candidate_ids": [1,2], "accurate": false}
+```
+
+不传 `candidate_ids` 和 `clips` 时导出全部候选；也可传自定义片段：
+
+```json
+{"clips": [{"start": 100, "end": 180, "title": "自定义片段"}]}
+```
+
+导出文件位于 `data/tasks/{task_id}/exports/`，可通过
+`GET /api/tasks/{task_id}/exports/{filename}` 下载。

@@ -9,8 +9,14 @@ def generate_long_candidates(scenes: list[dict], scoring_cfg) -> list[dict[str, 
     min_score = float(scoring_cfg.long_candidate_min_score)
     min_duration = float(scoring_cfg.long_candidate_min_minutes) * 60.0
     max_duration = float(scoring_cfg.long_candidate_max_minutes) * 60.0
+    if min_duration <= 0:
+        min_duration = 60.0
+    if max_duration <= 0:
+        max_duration = 300.0
+    if max_duration < min_duration:
+        max_duration = min_duration
     merge_gap = float(scoring_cfg.merge_gap_seconds)
-    max_count = int(scoring_cfg.max_long_candidates)
+    max_count = max(1, int(scoring_cfg.max_long_candidates))
 
     high = [s for s in scenes if float(s.get("final_score") or 0) >= min_score]
     if not high:

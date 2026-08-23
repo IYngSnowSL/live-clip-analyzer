@@ -49,7 +49,12 @@ async def _ffmpeg_scene_boundaries(video_path: str | Path, duration: float,
         "-vf", f"select='gt(scene,{threshold})',showinfo",
         "-an", "-f", "null", "-",
     ]
-    _, stderr = await run_async(cmd, timeout=7200)
+    try:
+        _, stderr = await run_async(cmd, timeout=7200)
+    except RuntimeError as exc:
+        # 场景滤镜不可用时退化为固定时长切分，不让整个任务失败
+        print(f"[scene_detect] ffmpeg 场景检测失败，将退化为固定时长切分: {exc}")
+        return []
     text = stderr.decode("utf-8", errors="ignore")
     times: list[float] = []
     for match in re.finditer(r"pts_time:([0-9]+(?:\.[0-9]+)?)", text):

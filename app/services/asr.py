@@ -20,11 +20,20 @@ async def transcribe_chunks(client, chunks_dir: str | Path, chunk_seconds: int,
 
     all_segments: list[dict] = []
     offset = 0.0
+    failures = 0
     for fp in files:
-        duration = await ffprobe_duration(fp)
-        if duration <= 0:
-            duration = float(chunk_seconds)
-        segments = await _transcribe_one(client, fp, duration, language)
+        duration = float(chunk_seconds)
+        try:
+            probed = await ffprobe_duration(fp)
+            if probed > 0:
+                duration = probed
+            segments = await _transcribe_one(client, fp, duration, language)
+        except Exception as exc:  # noqa: BLE001
+            # 单个音频块失败不中断整场 ASR；时间偏移仍然前进
+            failures += 1
+            print(f"[asr] {fp.name} 转写失败: {exc}")
+            offset += duration
+            continue
         for seg in segments:
             all_segments.append({
                 "start": round(offset + float(seg["start"]), 2),
@@ -32,6 +41,9 @@ async def transcribe_chunks(client, chunks_dir: str | Path, chunk_seconds: int,
                 "text": (seg.get("text") or "").strip(),
             })
         offset += duration
+
+    if files and failures >= len(files):
+        raise AIError("所有音频块的 ASR 转写均失败，请检查 asr_model 配置或 API Key")
     return all_segments
 
 

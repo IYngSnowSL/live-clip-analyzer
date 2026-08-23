@@ -19,6 +19,8 @@ class AIError(Exception):
 class AIClient:
     def __init__(self, ai_cfg):
         self.base_url = str(ai_cfg.base_url).rstrip("/")
+        if not self.base_url.startswith(("http://", "https://")):
+            raise AIError("config ai.base_url 必须以 http:// 或 https:// 开头")
         self.api_key = str(ai_cfg.api_key or "")
         self.vision_model = str(ai_cfg.vision_model)
         self.llm_model = str(ai_cfg.llm_model)
@@ -36,7 +38,11 @@ class AIClient:
         for attempt in range(retries):
             resp = await self.client.post(path, json=payload)
             if resp.status_code < 400:
-                return resp.json()
+                try:
+                    return resp.json()
+                except ValueError as exc:
+                    raise AIError(f"API {path} 返回非 JSON: {resp.text[:200]}",
+                                  status_code=resp.status_code) from exc
             text = resp.text[:500]
             last_exc = AIError(f"API {path} 返回 {resp.status_code}: {text}",
                                status_code=resp.status_code)
@@ -66,7 +72,10 @@ class AIClient:
                 data = await self._post_json("/chat/completions", payload)
             else:
                 raise
-        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        choices = data.get("choices") or []
+        if not choices:
+            return ""
+        content = choices[0].get("message", {}).get("content", "")
         return content or ""
 
     async def chat_json(self, messages: list[dict], model: str | None = None,
@@ -76,20 +85,41 @@ class AIClient:
         return extract_json(content)
 
     async def transcribe_audio(self, file_path: str | Path, language: str | None = None,
-                               response_format: str | None = "verbose_json") -> dict:
+                               response_format: str | None = "verbose_json",
+                               retries: int = 3) -> dict:
         data = {"model": self.asr_model}
         if response_format:
             data["response_format"] = response_format
         if language:
             data["language"] = language
         path = Path(file_path)
-        with open(path, "rb") as f:
-            files = {"file": (path.name, f, "audio/mpeg")}
-            resp = await self.client.post("/audio/transcriptions", data=data, files=files)
-        if resp.status_code >= 400:
+        mime = "audio/mpeg"
+        if path.suffix.lower() in (".m4a", ".mp4"):
+            mime = "audio/mp4"
+        elif path.suffix.lower() in (".wav",):
+            mime = "audio/wav"
+
+        last_exc: AIError | None = None
+        for attempt in range(retries):
+            with open(path, "rb") as f:
+                files = {"file": (path.name, f, mime)}
+                resp = await self.client.post("/audio/transcriptions", data=data, files=files)
+            if resp.status_code < 400:
+                try:
+                    return resp.json()
+                except ValueError:
+                    # 部分兼容接口会直接返回纯文本，包装为 dict 供上层解析
+                    if resp.text.strip():
+                        return {"text": resp.text.strip()}
+                    raise AIError("ASR API 返回空响应", status_code=resp.status_code)
             text = resp.text[:500]
-            raise AIError(f"ASR API 返回 {resp.status_code}: {text}", status_code=resp.status_code)
-        return resp.json()
+            last_exc = AIError(f"ASR API 返回 {resp.status_code}: {text}",
+                               status_code=resp.status_code)
+            if resp.status_code in (429, 500, 502, 503) and attempt < retries - 1:
+                await asyncio.sleep(2 ** attempt)
+                continue
+            raise last_exc
+        raise last_exc if last_exc else AIError("ASR API 请求失败")
 
 
 def extract_json(text: str) -> dict:

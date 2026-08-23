@@ -131,7 +131,11 @@ async def convert_to_mp4(src: str | Path, dst: str | Path) -> str:
 async def extract_audio_chunks(src: str | Path, out_dir: str | Path,
                                chunk_seconds: int = 1200,
                                concurrency: int = 2) -> list[str]:
-    """按固定时长切出 mp3 音频块（手动 -ss/-t 方式，兼容性更好）。返回文件路径列表。"""
+    """提取整段音频后，用 -c copy 快速切块，供 ASR 使用。
+
+    说明：FLV 本身没有索引，直接按 -ss 逐块切长视频会反复从头读取，
+    因此先一次性抽出整段 mp3，再无损切分。
+    """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     info = await ffprobe_info(src)
@@ -144,9 +148,19 @@ async def extract_audio_chunks(src: str | Path, out_dir: str | Path,
     chunk_seconds = int(chunk_seconds)
     if chunk_seconds <= 0:
         chunk_seconds = 1200
+
+    full_audio = out_dir / "full.mp3"
+    if not full_audio.exists():
+        cmd = [
+            ffmpeg_bin(), "-y", "-i", str(src),
+            "-vn", "-ac", "1", "-ar", "16000",
+            "-c:a", "libmp3lame", "-q:a", "4",
+            str(full_audio),
+        ]
+        await run_async(cmd, timeout=7200)
+
     count = int(duration // chunk_seconds) + (1 if duration % chunk_seconds > 1 else 0)
     count = max(1, count)
-
     sem = asyncio.Semaphore(max(1, int(concurrency)))
 
     async def one(i: int) -> str:
@@ -156,17 +170,21 @@ async def extract_audio_chunks(src: str | Path, out_dir: str | Path,
             return str(out_path)
         cmd = [
             ffmpeg_bin(), "-y",
-            "-ss", str(start), "-i", str(src),
+            "-ss", str(start), "-i", str(full_audio),
             "-t", str(chunk_seconds),
-            "-vn", "-ac", "1", "-ar", "16000",
-            "-c:a", "libmp3lame", "-q:a", "4",
+            "-c", "copy",
             str(out_path),
         ]
         async with sem:
-            await run_async(cmd, timeout=7200)
+            await run_async(cmd, timeout=3600)
         return str(out_path)
 
     await asyncio.gather(*(one(i) for i in range(count)))
+    # 切分完成后删除整段音频，节省磁盘空间
+    try:
+        full_audio.unlink()
+    except OSError:
+        pass
     return sorted(str(p) for p in out_dir.glob("chunk_*.mp3"))
 
 

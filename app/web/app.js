@@ -129,6 +129,9 @@ function renderCandidates(candidates) {
   document.querySelectorAll(".btn-edit").forEach((btn) => {
     btn.addEventListener("click", () => openEdit(btn.dataset.id));
   });
+    document.querySelectorAll(".btn-export-one").forEach((btn) => {
+      btn.addEventListener("click", () => exportCandidateIds([Number(btn.dataset.id)], btn));
+    });
 }
 
 function candidateCard(c) {
@@ -146,7 +149,8 @@ function candidateCard(c) {
       </div>
       <div class="meta"><b>理由：</b>${escapeHtml(c.reason_zh || "（无）")}</div>
       ${(c.keywords || []).length ? `<div class="meta"><b>关键词：</b>${escapeHtml(c.keywords.join("、"))}</div>` : ""}
-      <div class="actions"><button class="btn-edit" data-id="${c.id}">复核编辑</button></div>
+      <div class="actions"><button class="btn-edit" data-id="${c.id}">复核编辑</button>
+          <button class="btn-export-one" data-id="${c.id}">导出此切片</button></div>
     </div>`;
 }
 
@@ -167,6 +171,8 @@ async function openReport(taskId) {
   currentTaskId = taskId;
   const task = await api(`/api/tasks/${taskId}`);
   renderReport(task);
+    $("export-results").innerHTML = `<div class="muted">暂无导出结果。</div>`;
+    await loadExportResults();
   await refreshReportData();
   startPolling(taskId);
 }
@@ -177,6 +183,63 @@ async function refreshReportData() {
   currentCandidates = await api(`/api/tasks/${currentTaskId}/candidates`);
   renderScenes(currentScenes);
   renderCandidates(currentCandidates);
+}
+
+function renderExportResults(files) {
+  const box = $("export-results");
+  if (!files || !files.length) {
+    box.innerHTML = `<div class="muted">暂无导出结果。</div>`;
+    return;
+  }
+  box.innerHTML = files.map((f) => {
+    const timeText = `[${formatTs(f.start)} - ${formatTs(f.end)}]`;
+    if (f.status !== "ok") {
+      return `<div class="export-item">${timeText} ${escapeHtml(f.title)} — 失败：${escapeHtml(f.error || "未知错误")}</div>`;
+    }
+    const href = `/api/tasks/${currentTaskId}/exports/${encodeURIComponent(f.filename)}`;
+    return `<div class="export-item">
+      ${timeText} ${escapeHtml(f.title || "")}
+      <a class="btn" href="${href}" target="_blank">下载</a>
+      <a class="btn" href="/static/preview.html?task=${currentTaskId}&t=${f.start}" target="_blank">预览</a>
+    </div>`;
+  }).join("");
+}
+
+async function loadExportResults() {
+  if (!currentTaskId) return;
+  try {
+    const files = await api(`/api/tasks/${currentTaskId}/exports`);
+    renderExportResults(files || []);
+  } catch (err) {
+    console.error("加载导出结果失败", err);
+  }
+}
+
+async function exportCandidateIds(candidateIds, btn) {
+  if (!currentTaskId) return;
+  const oldText = btn ? btn.textContent : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "导出中…";
+  }
+  try {
+    const payload = candidateIds ? { candidate_ids: candidateIds } : {};
+    if ($("export-accurate").checked) payload.accurate = true;
+    const result = await api(`/api/tasks/${currentTaskId}/export`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    renderExportResults(result.files || []);
+    const okCount = (result.files || []).filter((f) => f.status === "ok").length;
+    $("report-status").textContent = `导出完成：成功 ${okCount} / 共 ${(result.files || []).length} 个，目录：${result.export_dir || ""}`;
+  } catch (err) {
+    alert("导出失败：" + err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = oldText;
+    }
+  }
 }
 
 function startPolling(taskId) {
@@ -230,6 +293,10 @@ async function init() {
   $("rank-filter").addEventListener("change", () => renderScenes(currentScenes));
   $("score-filter").addEventListener("input", () => renderScenes(currentScenes));
   $("btn-refresh").addEventListener("click", () => refreshReportData().catch((e) => alert(e.message)));
+    $("btn-export-all").addEventListener("click", async () => {
+      if (!confirm("确定批量导出当前全部候选切片？")) return;
+      await exportCandidateIds(null, $("btn-export-all"));
+    });
   $("btn-cancel-review").addEventListener("click", () => $("edit-modal").classList.add("hidden"));
   $("btn-save-review").addEventListener("click", async () => {
     const id = $("edit-id").value;

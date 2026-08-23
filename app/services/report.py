@@ -109,12 +109,16 @@ def build_report_markdown(task: dict, scenes: list[dict], candidates: list[dict]
     long_cands = [c for c in candidates if c["type"] == "long"]
     sentence_cands = [c for c in candidates if c["type"] == "sentence"]
 
+    video_label = "视频" if lang == "zh" else "Video"
+    danmaku_label = "弹幕" if lang == "zh" else "Danmaku"
+    generated_label = "生成时间" if lang == "zh" else "Generated at"
+    na = "（无）" if lang == "zh" else "None"
     lines = [
         f"# {t['title']}",
         "",
-        f"> 视频：`{task.get('video_path','')}`",
-        f"> 弹幕：`{task.get('danmaku_path') or '（无）'}`",
-        f"> 生成时间：{task.get('updated_at') or ''}",
+        f"> {video_label}：`{task.get('video_path','')}`",
+        f"> {danmaku_label}：`{task.get('danmaku_path') or na}`",
+        f"> {generated_label}：{task.get('updated_at') or ''}",
         "",
         f"## {t['overview']}",
         "",
@@ -130,7 +134,6 @@ def build_report_markdown(task: dict, scenes: list[dict], candidates: list[dict]
         lines.append(_scene_to_md(sc, lang))
         lines.append("")
 
-    na = "（无）" if lang == "zh" else "None"
     lines += [f"## {t['long_candidates']}", ""]
     if long_cands:
         for c in long_cands:

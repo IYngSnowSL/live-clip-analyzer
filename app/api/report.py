@@ -93,11 +93,11 @@ def _range_response(path: Path, request: Request, media_type: str) -> Response:
     file_size = path.stat().st_size
     range_header = request.headers.get("range")
     if not range_header:
-        return FileResponse(path, media_type=media_type)
+        return FileResponse(path, media_type=media_type, headers={"Accept-Ranges": "bytes"})
 
     match = re.match(r"bytes=(\d*)-(\d*)", range_header.strip())
     if not match:
-        return FileResponse(path, media_type=media_type)
+        return FileResponse(path, media_type=media_type, headers={"Accept-Ranges": "bytes"})
 
     start_s, end_s = match.groups()
     if start_s == "" and end_s:
@@ -141,7 +141,8 @@ async def get_video(task_id: str, request: Request):
 @router.get("/{task_id}/frames/{filename}")
 async def get_frame(task_id: str, filename: str):
     _get_task_or_404(task_id)
-    path = _task_dir(task_id) / "frames" / filename
-    if not path.exists():
+    base = (_task_dir(task_id) / "frames").resolve()
+    path = (base / filename).resolve()
+    if path.parent != base or not path.exists():
         raise HTTPException(404, "帧图片不存在")
     return FileResponse(path, media_type="image/jpeg")
