@@ -1,0 +1,161 @@
+:root {
+  --bg: #0f1419;
+  --card: #1a2029;
+  --border: #2c3644;
+  --text: #e5eaf0;
+  --muted: #8b98a9;
+  --primary: #4f8cff;
+  --high: #f0b429;
+  --medium: #68c1a1;
+  --low: #8b98a9;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  line-height: 1.6;
+}
+
+header {
+  padding: 28px 24px 8px;
+  text-align: center;
+}
+header h1 { margin: 0 0 4px; font-size: 26px; }
+header .sub { margin: 0; color: var(--muted); }
+
+main {
+  max-width: 1100px;
+  margin: 20px auto 60px;
+  padding: 0 16px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+.card h2 { margin-top: 0; font-size: 18px; }
+
+.form-row { margin-bottom: 12px; }
+.form-row label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+.form-row input, .form-row select {
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #12161d;
+  color: var(--text);
+  font-size: 14px;
+}
+.two-col { display: flex; gap: 12px; }
+.two-col > div { flex: 1; }
+
+button, .btn {
+  background: var(--primary);
+  border: none;
+  color: #fff;
+  padding: 9px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  text-decoration: none;
+  display: inline-block;
+}
+button.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+button:hover, .btn:hover { opacity: 0.9; }
+
+.hidden { display: none; }
+.muted { color: var(--muted); font-size: 13px; }
+
+.task-list { display: flex; flex-direction: column; gap: 10px; }
+.task-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #12161d;
+}
+.task-item .info { flex: 1; }
+.task-item .name { font-weight: 600; }
+.task-item .meta { color: var(--muted); font-size: 12px; }
+.progress {
+  width: 180px;
+  height: 8px;
+  border-radius: 4px;
+  background: #242d3a;
+  overflow: hidden;
+}
+.progress > div { height: 100%; background: var(--primary); }
+
+.status { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #242d3a; }
+.status.running { color: #4f8cff; }
+.status.done { color: #68c1a1; }
+.status.failed { color: #ff6b6b; }
+
+.report-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.filter-row { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.filter-row input, .filter-row select {
+  width: auto; padding: 6px 8px; border-radius: 6px;
+  border: 1px solid var(--border); background: #12161d; color: var(--text);
+}
+
+.scene-item {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--low);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: #12161d;
+}
+.scene-item.rank-high { border-left-color: var(--high); }
+.scene-item.rank-medium { border-left-color: var(--medium); }
+.scene-item.rank-low { border-left-color: var(--low); }
+.scene-item .head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.scene-item .title { font-weight: 600; }
+.scene-item .badge { font-size: 12px; color: #fff; padding: 1px 8px; border-radius: 10px; }
+.badge.high { background: #8a6d1a; }
+.badge.medium { background: #2e6b55; }
+.badge.low { background: #4a5563; }
+.scene-item .detail { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.scene-item .detail b { color: var(--text); }
+
+.candidate {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: #12161d;
+}
+.candidate .head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.candidate .title { font-weight: 600; }
+.candidate .meta { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.candidate .actions { margin-top: 8px; }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+.modal-content {
+  width: 480px;
+  max-width: 94vw;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }

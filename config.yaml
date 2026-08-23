@@ -1,0 +1,50 @@
+# ============================================================
+# 直播切片分析工具配置
+# 所有路径均可使用相对路径（相对项目根目录）或绝对路径
+# ============================================================
+
+server:
+  host: 127.0.0.1
+  port: 8000
+
+data:
+  data_dir: ./data          # 任务产物保存目录
+
+ai:
+  base_url: https://api.openai.com/v1   # OpenAI 兼容接口
+  api_key: sk-xxxx                     # 你的 API Key
+  vision_model: gpt-4o                 # 视觉模型名
+  llm_model: gpt-4o-mini               # 文本模型名
+  asr_model: whisper-1                 # ASR 模型名
+  timeout: 180                          # 单次请求超时（秒）
+  concurrency: 4                        # 并发调用上限
+
+asr:
+  chunk_seconds: 1200                   # 音频切片长度（秒），长音频会自动分段
+  language: ""                          # ASR 语言代码；留空为自动识别，可填 zh / en
+
+vision:
+  frame_interval: 15                    # 全局抽帧间隔（秒）
+  max_frames_per_scene: 2               # 每个时间段最多选几帧送给视觉模型
+
+scene:
+  min_scene_seconds: 8                  # 场景最短时长（秒）
+  max_scene_seconds: 30                 # 场景最长时长（秒），超过自动切分，也即时间轴颗粒度
+  threshold: 0.35                       # 场景切换灵敏度，越小切得越细
+
+scoring:
+  weights:
+    danmaku_heat: 0.25                  # 弹幕热度权重
+    danmaku_emotion: 0.20               # 弹幕情绪权重
+    fun: 0.35                           # 内容有趣度权重（LLM）
+    highlight: 0.20                     # 高光/二创潜力权重（LLM）
+  long_candidate_min_score: 6.5         # 长切片候选最低综合分
+  long_candidate_min_minutes: 1.0       # 长切片最小时长（分钟）
+  long_candidate_max_minutes: 5.0       # 长切片最大时长（分钟）
+  merge_gap_seconds: 20.0               # 两个高分片段之间允许的间隔（秒）
+  max_long_candidates: 20               # 长切片候选最多输出条数
+  sentence_candidate_min_score: 5.0     # 单句素材候选最低综合分
+  max_sentence_candidates: 30           # 单句素材候选最多输出条数
+
+report:
+  languages: [zh, en]                   # 默认输出语言，可 zh / en / 两者

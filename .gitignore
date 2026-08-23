@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+
+# 项目数据与产物
+data/
+
+# 本地配置（放真实 key）
+config.local.yaml
+.env
+
+# 系统文件
+.DS_Store
+Thumbs.db
