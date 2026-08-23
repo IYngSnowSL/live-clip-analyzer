@@ -121,6 +121,8 @@ button:hover, .btn:hover { opacity: 0.9; }
 .scene-item.rank-medium { border-left-color: var(--medium); }
 .scene-item.rank-low { border-left-color: var(--low); }
 .scene-item .head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.time-link { color: var(--primary); text-decoration: none; }
+.time-link:hover { text-decoration: underline; }
 .scene-item .title { font-weight: 600; }
 .scene-item .badge { font-size: 12px; color: #fff; padding: 1px 8px; border-radius: 10px; }
 .badge.high { background: #8a6d1a; }

@@ -1,11 +1,11 @@
 """报告 / 场景 / 候选 / 复核 / 文件接口。"""
 from __future__ import annotations
 
-import json
+import re
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 
 from .. import models
@@ -88,13 +88,54 @@ async def export_json(task_id: str):
     return FileResponse(path, media_type="application/json", filename="export.json")
 
 
+def _range_response(path: Path, request: Request, media_type: str) -> Response:
+    """支持 HTTP Range 的文件响应，便于浏览器视频跳转播放。"""
+    file_size = path.stat().st_size
+    range_header = request.headers.get("range")
+    if not range_header:
+        return FileResponse(path, media_type=media_type)
+
+    match = re.match(r"bytes=(\d*)-(\d*)", range_header.strip())
+    if not match:
+        return FileResponse(path, media_type=media_type)
+
+    start_s, end_s = match.groups()
+    if start_s == "" and end_s:
+        # 后缀范围：bytes=-500 表示最后 500 字节
+        suffix = int(end_s)
+        start = max(0, file_size - suffix)
+        end = file_size - 1
+    else:
+        start = int(start_s) if start_s else 0
+        end = int(end_s) if end_s else file_size - 1
+    end = min(end, file_size - 1)
+
+    if start > end or start >= file_size:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
+
+    chunk_size = end - start + 1
+    with open(path, "rb") as f:
+        f.seek(start)
+        data = f.read(chunk_size)
+    return Response(
+        content=data,
+        status_code=206,
+        media_type=media_type,
+        headers={
+            "Content-Range": f"bytes {start}-{end}/{file_size}",
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(chunk_size),
+        },
+    )
+
+
 @router.get("/{task_id}/video")
-async def get_video(task_id: str):
+async def get_video(task_id: str, request: Request):
     _get_task_or_404(task_id)
     path = _task_dir(task_id) / "converted" / "video.mp4"
     if not path.exists():
         raise HTTPException(404, "转封装视频不存在")
-    return FileResponse(path, media_type="video/mp4")
+    return _range_response(path, request, "video/mp4")
 
 
 @router.get("/{task_id}/frames/{filename}")

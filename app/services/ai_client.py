@@ -1,6 +1,7 @@
 """OpenAI 兼容 API 客户端：chat / chat_json / ASR 转写。"""
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from pathlib import Path
@@ -30,12 +31,20 @@ class AIClient:
     async def close(self) -> None:
         await self.client.aclose()
 
-    async def _post_json(self, path: str, payload: dict) -> dict:
-        resp = await self.client.post(path, json=payload)
-        if resp.status_code >= 400:
+    async def _post_json(self, path: str, payload: dict, retries: int = 3) -> dict:
+        last_exc: AIError | None = None
+        for attempt in range(retries):
+            resp = await self.client.post(path, json=payload)
+            if resp.status_code < 400:
+                return resp.json()
             text = resp.text[:500]
-            raise AIError(f"API {path} 返回 {resp.status_code}: {text}", status_code=resp.status_code)
-        return resp.json()
+            last_exc = AIError(f"API {path} 返回 {resp.status_code}: {text}",
+                               status_code=resp.status_code)
+            if resp.status_code in (429, 500, 502, 503) and attempt < retries - 1:
+                await asyncio.sleep(2 ** attempt)
+                continue
+            raise last_exc
+        raise last_exc if last_exc else AIError(f"API {path} 请求失败")
 
     async def chat(self, messages: list[dict], model: str | None = None,
                    temperature: float = 0.3, max_tokens: int = 1200,

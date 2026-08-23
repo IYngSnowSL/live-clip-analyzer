@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import re
 
+from .ai_client import AIError
 from .ffmpeg_utils import format_ts
 
 
@@ -55,7 +56,7 @@ def _build_prompt(scene: dict, asr_text: str) -> str:
 {asr_text or '（无）'}
 
 【弹幕统计】
-数量：{scene.get('danmaku_count', 0)}；热度：{scene.get('danmaku_heat', 0):.2f}；情绪强度：{scene.get('danmaku_emotion', 0):.2f}；高频弹幕：{keywords_text}
+数量：{scene.get('danmaku_count', 0)}；热度：{(scene.get('danmaku_heat') or 0):.2f}；情绪强度：{(scene.get('danmaku_emotion') or 0):.2f}；高频弹幕：{keywords_text}
 
 请输出 JSON，字段如下：
 {{
@@ -74,10 +75,15 @@ def _build_prompt(scene: dict, asr_text: str) -> str:
 
 async def analyze_scenes(client, scenes: list[dict], asr_segments: list[dict],
                          concurrency: int = 4) -> list[dict]:
-    """逐段调用 LLM，把标题/概述/评分/单句素材写回 scenes。"""
+    """逐段调用 LLM，把标题/概述/评分/单句素材写回 scenes。
+
+    单个场景调用失败时使用空数据继续，只有全部失败才终止任务。
+    """
     sem = asyncio.Semaphore(max(1, int(concurrency)))
+    failures = 0
 
     async def one(scene: dict) -> dict:
+        nonlocal failures
         asr_text = gather_asr_for_scene(asr_segments, scene["start"], scene["end"])
         prompt = _build_prompt(scene, asr_text)
         messages = [
@@ -85,8 +91,13 @@ async def analyze_scenes(client, scenes: list[dict], asr_segments: list[dict],
             {"role": "user", "content": prompt},
         ]
         async with sem:
-            data = await client.chat_json(messages, model=client.llm_model,
-                                          temperature=0.3, max_tokens=1600)
+            try:
+                data = await client.chat_json(messages, model=client.llm_model,
+                                              temperature=0.3, max_tokens=1600)
+            except AIError as exc:
+                failures += 1
+                print(f"[timeline] scene {scene['scene_index']} LLM 失败: {exc}")
+                data = {}
 
         scene["title_zh"] = str(data.get("title_zh") or "").strip()
         scene["title_en"] = str(data.get("title_en") or "").strip()
@@ -120,4 +131,7 @@ async def analyze_scenes(client, scenes: list[dict], asr_segments: list[dict],
             scene["quote_end"] = None
         return scene
 
-    return await asyncio.gather(*(one(s) for s in scenes))
+    result = await asyncio.gather(*(one(s) for s in scenes))
+    if scenes and failures >= len(scenes):
+        raise AIError("所有场景的时间轴分析调用均失败，请检查 LLM 模型配置")
+    return result

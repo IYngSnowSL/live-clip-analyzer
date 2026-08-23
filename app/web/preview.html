@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>视频预览</title>
+  <style>
+    body { margin: 0; background: #000; color: #eee; font-family: "Microsoft YaHei", sans-serif; }
+    video { width: 100vw; height: 100vh; background: #000; }
+    .hint { position: fixed; left: 10px; top: 10px; background: rgba(0,0,0,.55); padding: 4px 10px; border-radius: 6px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="hint" id="hint">加载中…</div>
+  <video id="video" controls autoplay></video>
+  <script>
+    (function () {
+      const params = new URLSearchParams(location.search);
+      const task = params.get("task");
+      const t = Number(params.get("t") || 0);
+      const video = document.getElementById("video");
+      const hint = document.getElementById("hint");
+      if (!task) {
+        hint.textContent = "缺少 task 参数";
+        return;
+      }
+      video.src = `/api/tasks/${task}/video`;
+      video.addEventListener("loadedmetadata", () => {
+        try { video.currentTime = t; } catch (e) { /* ignore */ }
+        hint.textContent = `任务 ${task} · 已尝试跳转到 ${t} 秒`;
+        video.play().catch(() => {});
+      });
+      video.addEventListener("error", () => { hint.textContent = "视频加载失败"; });
+    })();
+  </script>
+</body>
+</html>

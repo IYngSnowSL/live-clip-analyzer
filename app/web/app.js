@@ -54,16 +54,29 @@ function renderTasks(tasks) {
         <div class="progress"><div style="width:${progress}%"></div></div>
         ${taskStatusBadge(t)}
         <button data-id="${t.id}" class="btn-view">查看</button>
+          <button data-id="${t.id}" class="btn-delete ghost">删除</button>
       </div>`;
   }).join("");
   document.querySelectorAll(".btn-view").forEach((btn) => {
     btn.addEventListener("click", () => openReport(btn.dataset.id));
   });
+    document.querySelectorAll(".btn-delete").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("确定删除该任务及其所有分析产物？")) return;
+        try {
+          await api(`/api/tasks/${btn.dataset.id}`, { method: "DELETE" });
+          await loadTasks();
+        } catch (err) {
+          alert("删除失败：" + err.message);
+        }
+      });
+    });
 }
 
 function renderReport(task) {
   $("report-title").textContent = `分析报告（${task.id}）`;
-  $("report-status").textContent = `状态：${task.status} · ${task.message || ""}`;
+  $("report-status").textContent = `状态：${task.status}（${task.progress || 0}%） · ${task.message || ""}`;
+  $("link-video").href = `/api/tasks/${task.id}/video`;
   $("link-report-zh").href = `/api/tasks/${task.id}/report?lang=zh&download=1`;
   $("link-report-en").href = `/api/tasks/${task.id}/report?lang=en&download=1`;
   $("link-export-json").href = `/api/tasks/${task.id}/export.json`;
@@ -92,14 +105,14 @@ function renderScenes(scenes) {
     return `
       <div class="scene-item rank-${s.rank || "low"}">
         <div class="head">
-          <span class="title">[${formatTs(s.start)} - ${formatTs(s.end)}] ${escapeHtml(s.title_zh || "")}</span>
+          <span class="title"><a class="time-link" target="_blank" href="/static/preview.html?task=${currentTaskId}&t=${s.start}">[${formatTs(s.start)} - ${formatTs(s.end)}]</a> ${escapeHtml(s.title_zh || "")}</span>
           <span class="badge ${s.rank || "low"}">${rankName(s.rank)} · ${s.final_score ?? 0} 分</span>
         </div>
         <div class="detail"><b>内容：</b>${escapeHtml(s.summary_zh || "（无）")}</div>
         <div class="detail"><b>画面：</b>${escapeHtml(s.visual_summary || "（无）")}</div>
         <div class="detail"><b>语音：</b>${escapeHtml(s.asr_text || "（无）")}</div>
         <div class="detail"><b>弹幕：</b>数量 ${s.danmaku_count || 0} / 热度 ${s.danmaku_heat ?? 0} / 情绪 ${s.danmaku_emotion ?? 0} / 高频：${escapeHtml(keywords)}</div>
-        ${s.quote ? `<div class="detail"><b>Quote：</b>[${formatTs(s.quote_start || s.start)}] ${escapeHtml(s.quote)}</div>` : ""}
+        ${s.quote ? `<div class="detail"><b>Quote：</b>[${formatTs(s.quote_start ?? s.start)}] ${escapeHtml(s.quote)}</div>` : ""}
       </div>`;
   }).join("");
 }
@@ -128,7 +141,7 @@ function candidateCard(c) {
   return `
     <div class="candidate">
       <div class="head">
-        <span class="title">${timeText} ${escapeHtml(title)}</span>
+        <span class="title"><a class="time-link" target="_blank" href="/static/preview.html?task=${currentTaskId}&t=${start}">${timeText}</a> ${escapeHtml(title)}</span>
         <span class="badge ${rank}">${rankName(rank)} · ${score ?? 0} 分</span>
       </div>
       <div class="meta"><b>理由：</b>${escapeHtml(c.reason_zh || "（无）")}</div>
@@ -171,7 +184,7 @@ function startPolling(taskId) {
   timer = setInterval(async () => {
     try {
       const task = await api(`/api/tasks/${taskId}`);
-      $("report-status").textContent = `状态：${task.status} · ${task.message || ""}`;
+      $("report-status").textContent = `状态：${task.status}（${task.progress || 0}%） · ${task.message || ""}`;
       if (task.status === "done" || task.status === "failed") {
         clearInterval(timer);
         timer = null;
@@ -200,7 +213,7 @@ async function init() {
       output_languages: $("output_languages").value.split(",").map((x) => x.trim()).filter(Boolean),
     };
     try {
-      await api("/api/tasks", {
+      const task = await api("/api/tasks", {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -208,6 +221,7 @@ async function init() {
       $("offset_seconds").value = "0";
       $("output_languages").value = "zh,en";
       await loadTasks();
+        await openReport(task.id);
     } catch (err) {
       alert("创建失败：" + err.message);
     }
@@ -239,6 +253,7 @@ async function init() {
   });
 
   await loadTasks();
+  setInterval(loadTasks, 5000);
 }
 
 async function loadTasks() {

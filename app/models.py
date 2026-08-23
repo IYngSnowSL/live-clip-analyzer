@@ -49,6 +49,17 @@ def list_tasks() -> list[dict[str, Any]]:
         conn.close()
 
 
+def delete_task(task_id: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM candidates WHERE task_id=?", (task_id,))
+        conn.execute("DELETE FROM scenes WHERE task_id=?", (task_id,))
+        conn.execute("DELETE FROM tasks WHERE id=?", (task_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def update_task(task_id: str, **fields: Any) -> None:
     if not fields:
         return

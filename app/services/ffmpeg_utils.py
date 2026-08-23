@@ -50,8 +50,14 @@ async def ffprobe_info(video_path: str | Path) -> dict[str, Any]:
     stdout, _ = await run_async(cmd, timeout=300)
     data = json.loads(stdout.decode("utf-8", errors="ignore"))
     fmt = data.get("format", {})
-    duration = float(fmt.get("duration") or 0)
-    size = int(fmt.get("size") or 0)
+    try:
+        duration = float(fmt.get("duration") or 0)
+    except (TypeError, ValueError):
+        duration = 0.0
+    try:
+        size = int(fmt.get("size") or 0)
+    except (TypeError, ValueError):
+        size = 0
     video_stream: dict[str, Any] = {}
     audio_stream: dict[str, Any] = {}
     for stream in data.get("streams", []):
@@ -60,6 +66,15 @@ async def ffprobe_info(video_path: str | Path) -> dict[str, Any]:
             video_stream = stream
         elif codec_type == "audio" and not audio_stream:
             audio_stream = stream
+
+    # 部分 FLV 的 format.duration 可能缺失，用流时长兜底
+    if duration <= 0:
+        for stream in data.get("streams", []):
+            try:
+                stream_duration = float(stream.get("duration") or 0)
+                duration = max(duration, stream_duration)
+            except (TypeError, ValueError):
+                continue
 
     width = int(video_stream.get("width") or 0)
     height = int(video_stream.get("height") or 0)
@@ -119,9 +134,13 @@ async def extract_audio_chunks(src: str | Path, out_dir: str | Path,
     """按固定时长切出 mp3 音频块（手动 -ss/-t 方式，兼容性更好）。返回文件路径列表。"""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    duration = await ffprobe_duration(src)
+    info = await ffprobe_info(src)
+    duration = float(info.get("duration") or 0)
     if duration <= 0:
         raise RuntimeError(f"无法读取音频时长: {src}")
+    if not info.get("audio_codec"):
+        # 视频本身没有音轨，跳过音频切分
+        return []
     chunk_seconds = int(chunk_seconds)
     if chunk_seconds <= 0:
         chunk_seconds = 1200

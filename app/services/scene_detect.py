@@ -67,12 +67,12 @@ def refine_scenes(boundaries: list[float], duration: float,
     raw: list[tuple[float, float]] = []
     for i in range(len(points) - 1):
         a, b = points[i], points[i + 1]
-        if b - a <= 0.5:
+        if b - a <= 1e-6:
             continue
         while b - a > max_seconds + 1e-6:
             raw.append((a, a + max_seconds))
             a += max_seconds
-        if b - a > 0.5:
+        if b - a > 1e-6:
             raw.append((a, b))
 
     # 合并过短片段
@@ -99,11 +99,11 @@ def refine_scenes(boundaries: list[float], duration: float,
     # 再次切分因合并而明显超长的段。阈值取 max+min，避免切出过短尾段
     final: list[tuple[float, float]] = []
     for a, b in merged:
-        if b - a <= 0.5:
+        if b - a <= 1e-6:
             continue
         while b - a > max_seconds + min_seconds + 1e-6:
             final.append((a, a + max_seconds))
             a += max_seconds
-        if b - a > 0.5:
+        if b - a > 1e-6:
             final.append((a, b))
     return final

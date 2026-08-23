@@ -93,7 +93,12 @@ async def run_task(task_id: str) -> None:
         ) if danmaku_path else []
         update_task(task_id, progress=18, message=f"弹幕解析完成，共 {len(danmaku_list)} 条")
 
-        await asyncio.gather(convert_task, audio_task, scene_task)
+        try:
+            await asyncio.gather(convert_task, audio_task, scene_task)
+        except Exception:
+            for t in (convert_task, audio_task, scene_task):
+                t.cancel()
+            raise
         boundaries = scene_task.result()
 
         # 3. 场景切分与保存
@@ -152,14 +157,18 @@ async def run_task(task_id: str) -> None:
         update_task(task_id, progress=50, message=f"抽帧完成，共 {len(frame_items)} 帧")
 
         # 6. ASR
-        update_task(task_id, progress=52, message="ASR 语音转写中…")
         ai_client = AIClient(cfg.ai)
-        asr_segments = await transcribe_chunks(ai_client, chunks_dir,
-                                               int(cfg.asr.chunk_seconds),
-                                               str(cfg.asr.language or ""))
-        (tdir / "asr.json").write_text(
-            json.dumps(asr_segments, ensure_ascii=False, indent=2), encoding="utf-8")
-        update_task(task_id, progress=60, message=f"ASR 完成，共 {len(asr_segments)} 句")
+        if info.get("audio_codec"):
+            update_task(task_id, progress=52, message="ASR 语音转写中…")
+            asr_segments = await transcribe_chunks(ai_client, chunks_dir,
+                                                   int(cfg.asr.chunk_seconds),
+                                                   str(cfg.asr.language or ""))
+            (tdir / "asr.json").write_text(
+                json.dumps(asr_segments, ensure_ascii=False, indent=2), encoding="utf-8")
+            update_task(task_id, progress=60, message=f"ASR 完成，共 {len(asr_segments)} 句")
+        else:
+            asr_segments = []
+            update_task(task_id, progress=60, message="视频无音轨，跳过 ASR")
 
         # 7. 画面理解
         update_task(task_id, progress=62, message="画面理解（视觉模型）中…")
@@ -184,6 +193,7 @@ async def run_task(task_id: str) -> None:
                     message=f"候选生成完成：长切片 {len(long_candidates)} 条，单句素材 {len(sentence_candidates)} 条")
 
         # 10. 报告
+        task = get_task(task_id) or task
         languages = json.loads(task.get("output_languages") or '["zh","en"]')
         await asyncio.to_thread(build_reports, task, scenes, all_candidates, tdir, languages)
         export_path = tdir / "export.json"

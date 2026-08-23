@@ -58,13 +58,14 @@ def _scene_to_md(sc: dict, lang: str) -> str:
     summary = sc.get("summary_zh") if lang == "zh" else sc.get("summary_en")
     quote_reason = sc.get("quote_reason_zh") if lang == "zh" else sc.get("quote_reason_en")
     keywords = sc.get("danmaku_keywords") or []
-    kw_text = "、".join(str(k) for k in keywords) if keywords else "（无）"
+    na = "（无）" if lang == "zh" else "N/A"
+    kw_text = "、".join(str(k) for k in keywords) if keywords else na
 
     lines = [
         f"### [{format_ts(sc['start'])} - {format_ts(sc['end'])}] {title or ''}",
-        f"- **{t['content']}**：{summary or '（无）'}",
-        f"- **{t['visual']}**：{sc.get('visual_summary') or '（无）'}",
-        f"- **{t['asr']}**：{sc.get('asr_text') or '（无）'}",
+        f"- **{t['content']}**：{summary or na}",
+        f"- **{t['visual']}**：{sc.get('visual_summary') or na}",
+        f"- **{t['asr']}**：{sc.get('asr_text') or na}",
         f"- **{t['danmaku']}**：数量 {sc.get('danmaku_count', 0)} / 热度 "
         f"{float(sc.get('danmaku_heat') or 0):.2f} / 情绪 {float(sc.get('danmaku_emotion') or 0):.2f} / "
         f"高频：{kw_text}",
@@ -89,14 +90,15 @@ def _candidate_to_md(c: dict, lang: str) -> str:
     rank_name = t["rank_names"].get(rank, rank)
     reason = c.get("reason_zh") if lang == "zh" else c.get("reason_en")
     keywords = c.get("keywords") or []
-    kw_text = "、".join(str(k) for k in keywords) if keywords else "（无）"
+    na = "（无）" if lang == "zh" else "N/A"
+    kw_text = "、".join(str(k) for k in keywords) if keywords else na
 
     if c["type"] == "sentence":
         return (f"1. **[{format_ts(start)}] {title}**（{t['score']} {score}）\n"
-                f"   - {t['reason']}：{reason or '（无）'}")
+                f"   - {t['reason']}：{reason or na}")
     return (f"1. **[{format_ts(start)} - {format_ts(end)}] {title}**"
             f"（{t['score']} {score} / {t['rank']}：{rank_name}）\n"
-            f"   - {t['reason']}：{reason or '（无）'}\n"
+            f"   - {t['reason']}：{reason or na}\n"
             f"   - {t['keywords']}：{kw_text}")
 
 
@@ -128,13 +130,14 @@ def build_report_markdown(task: dict, scenes: list[dict], candidates: list[dict]
         lines.append(_scene_to_md(sc, lang))
         lines.append("")
 
+    na = "（无）" if lang == "zh" else "None"
     lines += [f"## {t['long_candidates']}", ""]
     if long_cands:
         for c in long_cands:
             lines.append(_candidate_to_md(c, lang))
             lines.append("")
     else:
-        lines.append("（无）")
+        lines.append(na)
         lines.append("")
 
     lines += [f"## {t['sentence_candidates']}", ""]
@@ -143,7 +146,7 @@ def build_report_markdown(task: dict, scenes: list[dict], candidates: list[dict]
             lines.append(_candidate_to_md(c, lang))
             lines.append("")
     else:
-        lines.append("（无）")
+        lines.append(na)
         lines.append("")
 
     return "\n".join(lines)

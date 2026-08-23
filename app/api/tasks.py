@@ -1,6 +1,7 @@
 """任务相关接口。"""
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -8,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from .. import models
+from ..config import load_config
 from ..workers.task_runner import start_task
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -54,3 +56,18 @@ async def get_task_detail(task_id: str):
     if not task:
         raise HTTPException(404, "任务不存在")
     return task
+
+
+@router.delete("/{task_id}")
+async def delete_task(task_id: str):
+    task = models.get_task(task_id)
+    if not task:
+        raise HTTPException(404, "任务不存在")
+    if task.get("status") in ("running", "pending"):
+        raise HTTPException(400, "任务正在运行，无法删除")
+    cfg = load_config()
+    task_dir = Path(cfg.data.tasks_dir) / task_id
+    if task_dir.exists():
+        shutil.rmtree(task_dir, ignore_errors=True)
+    models.delete_task(task_id)
+    return {"ok": True}
