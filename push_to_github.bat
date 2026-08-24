@@ -2,23 +2,29 @@
 setlocal
 cd /d "%~dp0"
 
+set "GIT=git"
 where git >nul 2>nul
 if errorlevel 1 (
-    echo [ERROR] Git not found. Please install Git first.
-    pause
-    exit /b 1
+    if exist "D:\Git\cmd\git.exe" (
+        set "GIT=D:\Git\cmd\git.exe"
+        echo [INFO] git not found in PATH. Using D:\Git\cmd\git.exe
+    ) else (
+        echo [ERROR] Git not found. Please install Git first.
+        pause
+        exit /b 1
+    )
 )
 
 if not exist ".git" (
-    git init
+    "%GIT%" init
 )
 
-git add .
-git commit -m "release: v0.2.0 DeepSeek UI and clip export" >nul 2>nul
+"%GIT%" add .
+"%GIT%" commit -m "chore: add git diagnostic scripts" >nul 2>nul
 
-git branch -M main
+"%GIT%" branch -M main
 
-git remote get-url origin >nul 2>nul
+"%GIT%" remote get-url origin >nul 2>nul
 if errorlevel 1 (
     if "%~1"=="" (
         echo.
@@ -30,7 +36,8 @@ if errorlevel 1 (
         pause
         exit /b 0
     )
-    git remote add origin %~1
+    "%GIT%" remote add origin %~1
 )
 
-git push -u origin main
+"%GIT%" push -u origin main
+"%GIT%" push origin v0.2.0
