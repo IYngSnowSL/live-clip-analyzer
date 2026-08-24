@@ -3,16 +3,50 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>视频预览</title>
+  <title>视频预览 · Live Clip Analyzer</title>
   <style>
-    body { margin: 0; background: #000; color: #eee; font-family: "Microsoft YaHei", sans-serif; }
-    video { width: 100vw; height: 100vh; background: #000; }
-    .hint { position: fixed; left: 10px; top: 10px; background: rgba(0,0,0,.55); padding: 4px 10px; border-radius: 6px; font-size: 13px; }
+    :root {
+      --bg: #f7f8fa; --surface: #ffffff; --border: #e7e9f0;
+      --text: #1a1d26; --muted: #8a919f; --primary: #4d6bfe;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    }
+    .topbar {
+      height: 54px; background: var(--surface); border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 14px; padding: 0 18px;
+    }
+    .topbar .logo {
+      width: 30px; height: 30px; border-radius: 9px;
+      background: linear-gradient(135deg, #4d6bfe, #7b5cff);
+      display: flex; align-items: center; justify-content: center; font-size: 16px;
+    }
+    .topbar b { font-size: 14px; }
+    .topbar a { color: var(--primary); text-decoration: none; font-size: 13px; }
+    .topbar a:hover { text-decoration: underline; }
+    .wrap { max-width: 1080px; margin: 26px auto 40px; padding: 0 16px; }
+    .hint {
+      background: #eef2ff; color: var(--primary); border-radius: 10px;
+      padding: 8px 12px; font-size: 13px; margin-bottom: 14px;
+    }
+    video {
+      width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 16px;
+      border: 1px solid var(--border); box-shadow: 0 12px 32px rgba(16,24,40,.10);
+    }
   </style>
 </head>
 <body>
-  <div class="hint" id="hint">加载中…</div>
-  <video id="video" controls autoplay></video>
+  <div class="topbar">
+    <span class="logo">🎬</span>
+    <b>直播切片分析</b>
+    <span style="color:#8a919f;font-size:13px" id="hint">加载中…</span>
+    <a href="/">← 返回主页</a>
+  </div>
+  <main class="wrap">
+    <video id="video" controls autoplay></video>
+  </main>
   <script>
     (function () {
       const params = new URLSearchParams(location.search);
@@ -27,7 +61,7 @@
       video.src = `/api/tasks/${task}/video`;
       video.addEventListener("loadedmetadata", () => {
         try { video.currentTime = t; } catch (e) { /* ignore */ }
-        hint.textContent = `任务 ${task} · 已尝试跳转到 ${t} 秒`;
+        hint.textContent = `任务 ${task} · 已跳转到 ${t} 秒`;
         video.play().catch(() => {});
       });
       video.addEventListener("error", () => { hint.textContent = "视频加载失败"; });

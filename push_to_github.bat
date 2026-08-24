@@ -14,7 +14,7 @@ if not exist ".git" (
 )
 
 git add .
-git commit -m "update: add video clip export module" >nul 2>nul
+git commit -m "release: v0.2.0 DeepSeek UI and clip export" >nul 2>nul
 
 git branch -M main
 

@@ -23,7 +23,7 @@ if not shutil.which("ffmpeg"):
 if not shutil.which("ffprobe"):
     print("[WARN] 未在 PATH 中找到 ffprobe，视频信息读取与音频切分将无法使用")
 
-app = FastAPI(title="直播切片分析工具", version="0.1.0")
+app = FastAPI(title="直播切片分析工具", version="0.2.0")
 
 app.include_router(tasks_router)
 app.include_router(report_router)

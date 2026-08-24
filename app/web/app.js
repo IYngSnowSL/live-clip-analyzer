@@ -45,8 +45,9 @@ function renderTasks(tasks) {
   }
   box.innerHTML = tasks.map((t) => {
     const progress = t.progress || 0;
+      const active = t.id === currentTaskId ? " active" : "";
     return `
-      <div class="task-item">
+      <div class="task-item${active}">
         <div class="info">
           <div class="name">${escapeHtml(t.video_path || "")}</div>
           <div class="meta">${t.id} · ${t.created_at} · ${escapeHtml(t.message || "")}</div>
@@ -66,6 +67,11 @@ function renderTasks(tasks) {
         try {
           await api(`/api/tasks/${btn.dataset.id}`, { method: "DELETE" });
           await loadTasks();
+            if (currentTaskId === btn.dataset.id) {
+              currentTaskId = null;
+              $("report-card").classList.add("hidden");
+              $("empty-state").classList.remove("hidden");
+            }
         } catch (err) {
           alert("删除失败：" + err.message);
         }
@@ -81,6 +87,8 @@ function renderReport(task) {
   $("link-report-en").href = `/api/tasks/${task.id}/report?lang=en&download=1`;
   $("link-export-json").href = `/api/tasks/${task.id}/export.json`;
   $("report-card").classList.remove("hidden");
+    $("empty-state").classList.add("hidden");
+    document.body.classList.remove("sidebar-open");
 }
 
 function rankName(rank) {
@@ -171,6 +179,7 @@ async function openReport(taskId) {
   currentTaskId = taskId;
   const task = await api(`/api/tasks/${taskId}`);
   renderReport(task);
+    await loadTasks();
     $("export-results").innerHTML = `<div class="muted">暂无导出结果。</div>`;
     await loadExportResults();
   await refreshReportData();
@@ -200,7 +209,7 @@ function renderExportResults(files) {
     return `<div class="export-item">
       ${timeText} ${escapeHtml(f.title || "")}
       <a class="btn" href="${href}" target="_blank">下载</a>
-      <a class="btn" href="/static/preview.html?task=${currentTaskId}&t=${f.start}" target="_blank">预览</a>
+      <a class="btn ghost" href="/static/preview.html?task=${currentTaskId}&t=${f.start}" target="_blank">预览</a>
     </div>`;
   }).join("");
 }
@@ -267,6 +276,9 @@ function escapeHtml(text) {
 }
 
 async function init() {
+    $("sidebar-toggle").addEventListener("click", () => {
+      document.body.classList.toggle("sidebar-open");
+    });
   $("create-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const payload = {
