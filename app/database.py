@@ -1,4 +1,10 @@
-"""SQLite 连接与初始化。"""
+"""SQLite 连接与初始化。
+
+推倒重建后（ADR-0006）的数据模型只有两张业务表：
+- tasks：分析任务
+- axles：打轴结果（唯一产物表）
+旧设计的 scenes / topic_segments / candidates 表在启动时清理。
+"""
 from __future__ import annotations
 
 import sqlite3
@@ -12,7 +18,6 @@ CREATE TABLE IF NOT EXISTS tasks (
     video_path TEXT NOT NULL,
     danmaku_path TEXT,
     offset_seconds REAL DEFAULT 0,
-    output_languages TEXT DEFAULT '["zh","en"]',
     status TEXT DEFAULT 'pending',
     progress INTEGER DEFAULT 0,
     message TEXT DEFAULT '',
@@ -20,71 +25,27 @@ CREATE TABLE IF NOT EXISTS tasks (
     updated_at TEXT DEFAULT (datetime('now','localtime'))
 );
 
-CREATE TABLE IF NOT EXISTS scenes (
+CREATE TABLE IF NOT EXISTS axles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id TEXT NOT NULL,
-    scene_index INTEGER NOT NULL,
+    axle_index INTEGER NOT NULL,
     start REAL NOT NULL,
     end REAL NOT NULL,
-    title_zh TEXT,
-    title_en TEXT,
-    summary_zh TEXT,
-    summary_en TEXT,
-    visual_summary TEXT,
-    asr_text TEXT,
-    danmaku_count INTEGER DEFAULT 0,
-    danmaku_heat REAL DEFAULT 0,
-    danmaku_emotion REAL DEFAULT 0,
-    danmaku_keywords TEXT,
-    fun_score REAL,
-    highlight_score REAL,
-    final_score REAL,
-    rank TEXT,
-    quote TEXT,
-    quote_start REAL,
-    quote_end REAL,
-    quote_reason_zh TEXT,
-    quote_reason_en TEXT,
-    created_at TEXT DEFAULT (datetime('now','localtime')),
-    UNIQUE(task_id, scene_index)
-);
-
-CREATE TABLE IF NOT EXISTS candidates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id TEXT NOT NULL,
-    type TEXT NOT NULL,
-    start REAL,
-    end REAL,
-    title_zh TEXT,
-    title_en TEXT,
+    title TEXT,
+    reason TEXT,
     score REAL,
-    reason_zh TEXT,
-    reason_en TEXT,
-    keywords TEXT,
     reviewed INTEGER DEFAULT 0,
     review_start REAL,
     review_end REAL,
     review_title TEXT,
-    review_score REAL,
-    review_rank TEXT,
-    created_at TEXT DEFAULT (datetime('now','localtime'))
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(task_id, axle_index)
 );
 
-CREATE TABLE IF NOT EXISTS topic_segments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    task_id TEXT NOT NULL,
-    topic_index INTEGER NOT NULL,
-    start REAL NOT NULL,
-    end REAL NOT NULL,
-    title_zh TEXT,
-    title_en TEXT,
-    summary_zh TEXT,
-    summary_en TEXT,
-    keywords TEXT,
-    score REAL,
-    created_at TEXT DEFAULT (datetime('now','localtime')),
-    UNIQUE(task_id, topic_index)
-);
+-- 旧设计遗留表：推倒重建后废弃（代码不再引用），启动时清理
+DROP TABLE IF EXISTS scenes;
+DROP TABLE IF EXISTS topic_segments;
+DROP TABLE IF EXISTS candidates;
 """
 
 

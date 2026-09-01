@@ -38,31 +38,17 @@ DEFAULTS: dict[str, Any] = {
         "concurrency": 4,
     },
     "asr": {"chunk_seconds": 1200, "language": ""},
-    "vision": {"frame_interval": 15, "max_frames_per_scene": 2},
-    "scene": {"min_scene_seconds": 8, "max_scene_seconds": 30, "threshold": 0.35},
-    "segmentation": {
-        "window_seconds": 600,     # 字幕语义切分分窗大小（秒）
-        "overlap_seconds": 60,     # 相邻窗重叠（秒）
-        "threshold": 0.35,         # 相邻窗关键词相似度阈值，越低切得越细
-        "min_topic_seconds": 120,  # 话题段最短时长（秒），过短并入相邻
-        "max_topics": 50,          # 话题段最多输出条数
+    "axle": {
+        "window_seconds": 600,        # LLM 找内容点的分窗大小（秒）
+        "overlap_seconds": 60,        # 相邻窗重叠（秒），避免漏掉跨窗内容点
+        "target_min_seconds": 60,     # 目标最短时长（秒）= 1 分钟
+        "target_max_seconds": 180,    # 目标最长时长（秒）= 3 分钟
+        "hard_max_seconds": 600,      # 硬上限（秒）= 10 分钟，超过自动拆分
+        "merge_gap_seconds": 30,      # 相邻内容点合并间隔（秒）
+        "max_axles": 100,             # 最多输出轴数
+        "silence_threshold_db": -35,  # 静音检测阈值（dB）
+        "silence_min_seconds": 0.4,   # 静音最短时长（秒）
     },
-    "scoring": {
-        "weights": {
-            "danmaku_heat": 0.25,
-            "danmaku_emotion": 0.20,
-            "fun": 0.35,
-            "highlight": 0.20,
-        },
-        "long_candidate_min_score": 6.5,
-        "long_candidate_min_minutes": 1.0,
-        "long_candidate_max_minutes": 5.0,
-        "merge_gap_seconds": 20.0,
-        "max_long_candidates": 20,
-        "sentence_candidate_min_score": 5.0,
-        "max_sentence_candidates": 30,
-    },
-    "report": {"languages": ["zh", "en"]},
     "export": {
         "accurate": False,       # False=无损快速剪切（关键帧对齐），True=重编码精切
         "concurrency": 1,        # 同时导出几个切片

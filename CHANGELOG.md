@@ -1,66 +1,33 @@
 # Changelog
 
+## v0.3.0 — 推倒重建：自动打轴为唯一核心
+
+按用户重新定义的产品定位（切片生产者，产物用于二创发布）推倒重建（ADR-0006）。
+
+### 核心：自动打轴
+- 新流水线：ffprobe → 音频提取 + 转封装 → ASR 转写（缓存）→ LLM 分窗找内容点并初步打轴
+  → 内容点合并 + 长度约束（目标 1~3 分钟，硬上限 10 分钟）→ **静音点精修**（ffmpeg silencedetect）
+  → axles 表保存
+- 每个轴输出：精确起止时间 + 标题 + 推荐理由 + 评分
+- 大量候选（默认最多 100 个），按评分排序，人工挑选
+- 新增 `app/services/axle.py`（核心）、`app/api/axles.py`（列表 / 复核 / CSV）
+- **CSV 导出**（BOM，直接对照剪辑软件打轴）
+- 人工复核（起止时间 / 标题），导出以复核值为准
+
+### 删除（判为臃肿）
+- 视觉场景检测与 8~30 秒时间轴、画面理解（视觉模型调用）
+- 弹幕统计、话题段（粗切）、综合加权评分
+- 中英双语报告（改为中文轴清单 + CSV）
+- 移除模块：scene_detect / vision / danmaku / timeline / scorer / candidates / segmentation / subtitle / report
+
+### 保留
+- 任务管理、ASR、AI 门面（LLM / 视觉 / ASR 能力接口）、切片导出（快切 / 精切）、
+  视频预览跳转、文件浏览、WebUI 配置页（密钥脱敏）
+
 ## v0.2.1 — 配置安全与健壮性
 
-### 新功能
-- 路径输入框新增「浏览」按钮：打开文件选择对话框导航本地目录，点击文件自动回填路径
-  （后端新增 `GET /api/files/ls`、`GET /api/files/drives`，视频 / XML 按扩展名过滤）
-- 新增「设置」页：在 WebUI 中配置 AI 接口与常用参数（写入 config.local.yaml，密钥脱敏显示，
-  保存后下一个任务生效；后端新增 `GET/PUT /api/config`）
-- **字幕驱动切分（主功能第一步）**：新增字幕语义切分，从 ASR 转写全文切出「话题段」
-  （纯 Python 预筛 + LLM 命名），新增 `topic_segments` 表、`GET /api/tasks/{id}/topics`、
-  Markdown 报告「话题目录」章节；ASR 结果缓存复用；AI 调用整理为统一门面
-  （`analyze_document` / `describe_images` / `transcribe`）
-
-### 配置安全
-- 配置改为四级优先级：默认值 < `config.yaml` < `config.local.yaml` < `LCA_*` 环境变量
-- 新增 `config.local.yaml` 覆盖机制（git 忽略，放真实 key）
-- 支持 `LCA_BASE_URL` / `LCA_API_KEY` / `LCA_VISION_MODEL` / `LCA_LLM_MODEL` / `LCA_ASR_MODEL`
-
-### 修复
-- LLM 时间轴分析不再输出冗余 `rank` 字段（rank 统一由评分计算）
-- `refine_scenes` 合并判断清理死代码，行为不变
-- 服务重启后遗留的 running/pending 任务自动标记 failed，不再产生僵尸任务
-- 删除任务接口支持 `?force=true` 强制删除
-- 导出结果列表刷新后保留标题（新增 `exports_meta.json` 持久化）
-- 同名片段重复导出时自动追加时间戳，避免覆盖旧文件
-- 单句素材候选的双语报告统一显示原话引用
-
-### 优化
-- 源视频已是浏览器可播的 MP4（H.264 + AAC/MP3/无音轨）时跳过转封装
-- 清理未使用的 `python-multipart` 依赖
-
-### 仓库卫生
-- 移除一次性个人脚本 `setup_github_private.bat` / `push_to_github.bat` / `git_diag.bat`
-- 修复 `.gitignore` 中文注释乱码
-
-### 文档
-- 新增 `CONTEXT.md` 领域术语表
-- 新增 `docs/adr/` 架构决策记录（切片导出策略、配置密钥优先级）
-- 新增 `docs/features/subtitle-first-segmentation.md`：字幕驱动切分新功能设计讨论
-- README 重写：配置说明、目录结构、文档索引
+（已废弃，见 v0.3.0）
 
 ## v0.2.0 — DeepSeek UI Release
 
-### Web UI
-- 全新浅色 DeepSeek 风格界面
-- 左侧任务栏 + 右侧报告区布局
-- 移动端侧栏抽屉
-- 空状态引导页
-- 任务高亮、删除后自动回到空状态
-- 视频预览页同步改为浅色风格
-
-### 视频切片导出
-- 新增 `app/services/exporter.py`
-- 快速模式：`-c copy` 无损剪切
-- 精切模式：H.264 + AAC 重编码
-- 支持单个 / 批量 / 自定义片段导出
-- 新增导出结果列表与下载接口
-
-### 稳定性
-- 长 FLV 音频提取改为整段提取 + 快速切块
-- ASR 单块失败自动跳过，全部失败才终止
-- API 429 / 5xx 自动重试
-- 评分权重自动归一化
-- 路径穿越防护
-- 场景检测失败自动降级为固定时长切分
+（已废弃，见 v0.3.0）

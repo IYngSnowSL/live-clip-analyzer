@@ -1,7 +1,6 @@
-"""数据访问层：任务 / 场景 / 候选。"""
+"""数据访问层：任务 / 轴（axles）。"""
 from __future__ import annotations
 
-import json
 import uuid
 from typing import Any
 
@@ -14,16 +13,15 @@ def _row_to_dict(row) -> dict[str, Any] | None:
 
 # ---------------- 任务 ----------------
 
-def create_task(video_path: str, danmaku_path: str | None, offset_seconds: float,
-                output_languages: list[str]) -> dict[str, Any]:
+def create_task(video_path: str, danmaku_path: str | None,
+                offset_seconds: float) -> dict[str, Any]:
     task_id = uuid.uuid4().hex[:12]
     conn = get_conn()
     try:
         conn.execute(
-            "INSERT INTO tasks (id, video_path, danmaku_path, offset_seconds, output_languages) "
-            "VALUES (?,?,?,?,?)",
-            (task_id, video_path, danmaku_path, offset_seconds,
-             json.dumps(output_languages, ensure_ascii=False)),
+            "INSERT INTO tasks (id, video_path, danmaku_path, offset_seconds) "
+            "VALUES (?,?,?,?)",
+            (task_id, video_path, danmaku_path, offset_seconds),
         )
         conn.commit()
         return get_task(task_id)
@@ -52,8 +50,7 @@ def list_tasks() -> list[dict[str, Any]]:
 def delete_task(task_id: str) -> None:
     conn = get_conn()
     try:
-        conn.execute("DELETE FROM candidates WHERE task_id=?", (task_id,))
-        conn.execute("DELETE FROM scenes WHERE task_id=?", (task_id,))
+        conn.execute("DELETE FROM axles WHERE task_id=?", (task_id,))
         conn.execute("DELETE FROM tasks WHERE id=?", (task_id,))
         conn.commit()
     finally:
@@ -87,169 +84,53 @@ def mark_interrupted_tasks() -> int:
         conn.close()
 
 
-# ---------------- 场景 ----------------
+# ---------------- 轴（打轴结果） ----------------
 
-SCENE_FIELDS = [
-    "task_id", "scene_index", "start", "end", "title_zh", "title_en",
-    "summary_zh", "summary_en", "visual_summary", "asr_text",
-    "danmaku_count", "danmaku_heat", "danmaku_emotion", "danmaku_keywords",
-    "fun_score", "highlight_score", "final_score", "rank",
-    "quote", "quote_start", "quote_end", "quote_reason_zh", "quote_reason_en",
+AXLE_FIELDS = [
+    "task_id", "axle_index", "start", "end", "title", "reason", "score",
 ]
 
 
-def save_scenes(task_id: str, scenes: list[dict[str, Any]]) -> None:
-    """按 (task_id, scene_index) 插入或替换场景。"""
+def save_axles(task_id: str, axles: list[dict[str, Any]]) -> None:
+    """按 task 覆盖写入打轴结果。task_id 由参数注入，轴 dict 不携带容器字段。"""
     conn = get_conn()
     try:
-        for sc in scenes:
+        conn.execute("DELETE FROM axles WHERE task_id=?", (task_id,))
+        for a in axles:
             values = []
-            for f in SCENE_FIELDS:
-                val = sc.get(f)
-                if isinstance(val, (list, dict)):
-                    val = json.dumps(val, ensure_ascii=False)
+            for f in AXLE_FIELDS:
+                val = task_id if f == "task_id" else a.get(f)
                 values.append(val)
-            placeholders = ",".join("?" for _ in SCENE_FIELDS)
-            sql = (
-                f"INSERT OR REPLACE INTO scenes ({','.join(SCENE_FIELDS)}) "
-                f"VALUES ({placeholders})"
-            )
+            placeholders = ",".join("?" for _ in AXLE_FIELDS)
+            sql = f"INSERT INTO axles ({','.join(AXLE_FIELDS)}) VALUES ({placeholders})"
             conn.execute(sql, values)
         conn.commit()
     finally:
         conn.close()
 
 
-def get_scenes(task_id: str) -> list[dict[str, Any]]:
+def get_axles(task_id: str) -> list[dict[str, Any]]:
     conn = get_conn()
     try:
         rows = conn.execute(
-            "SELECT * FROM scenes WHERE task_id=? ORDER BY scene_index ASC", (task_id,)
+            "SELECT * FROM axles WHERE task_id=? ORDER BY axle_index ASC", (task_id,)
         ).fetchall()
-        return [_scene_from_row(_row_to_dict(r)) for r in rows]
+        return [_row_to_dict(r) for r in rows]
     finally:
         conn.close()
 
 
-def _scene_from_row(row: dict[str, Any]) -> dict[str, Any]:
-    if row.get("danmaku_keywords"):
-        try:
-            row["danmaku_keywords"] = json.loads(row["danmaku_keywords"])
-        except Exception:
-            row["danmaku_keywords"] = []
-    return row
-
-
-# ---------------- 候选 ----------------
-
-CANDIDATE_FIELDS = [
-    "task_id", "type", "start", "end", "title_zh", "title_en",
-    "score", "reason_zh", "reason_en", "keywords",
-]
-
-
-def save_candidates(task_id: str, candidates: list[dict[str, Any]]) -> None:
-    conn = get_conn()
-    try:
-        conn.execute("DELETE FROM candidates WHERE task_id=?", (task_id,))
-        for c in candidates:
-            values = []
-            for f in CANDIDATE_FIELDS:
-                # task_id 由函数参数注入，候选 dict 不携带容器字段
-                val = task_id if f == "task_id" else c.get(f)
-                if isinstance(val, (list, dict)):
-                    val = json.dumps(val, ensure_ascii=False)
-                values.append(val)
-            placeholders = ",".join("?" for _ in CANDIDATE_FIELDS)
-            sql = (
-                f"INSERT INTO candidates ({','.join(CANDIDATE_FIELDS)}) "
-                f"VALUES ({placeholders})"
-            )
-            conn.execute(sql, values)
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def get_candidates(task_id: str) -> list[dict[str, Any]]:
-    conn = get_conn()
-    try:
-        rows = conn.execute(
-            "SELECT * FROM candidates WHERE task_id=? ORDER BY type ASC, score DESC", (task_id,)
-        ).fetchall()
-        result = []
-        for r in rows:
-            d = _row_to_dict(r)
-            if d.get("keywords"):
-                try:
-                    d["keywords"] = json.loads(d["keywords"])
-                except Exception:
-                    d["keywords"] = []
-            result.append(d)
-        return result
-    finally:
-        conn.close()
-
-
-def update_candidate_review(task_id: str, candidate_id: int, **fields: Any) -> None:
-    allowed = {"review_start", "review_end", "review_title", "review_score", "review_rank", "reviewed"}
+def update_axle_review(task_id: str, axle_id: int, **fields: Any) -> None:
+    allowed = {"review_start", "review_end", "review_title", "reviewed"}
     fields = {k: v for k, v in fields.items() if k in allowed}
     if not fields:
         return
     fields["reviewed"] = 1
     keys = list(fields)
-    sql = "UPDATE candidates SET " + ", ".join(f"{k}=?" for k in keys) + " WHERE id=? AND task_id=?"
+    sql = "UPDATE axles SET " + ", ".join(f"{k}=?" for k in keys) + " WHERE id=? AND task_id=?"
     conn = get_conn()
     try:
-        conn.execute(sql, [fields[k] for k in keys] + [candidate_id, task_id])
+        conn.execute(sql, [fields[k] for k in keys] + [axle_id, task_id])
         conn.commit()
-    finally:
-        conn.close()
-
-
-# ---------------- 话题段 ----------------
-
-TOPIC_FIELDS = [
-    "task_id", "topic_index", "start", "end", "title_zh", "title_en",
-    "summary_zh", "summary_en", "keywords", "score",
-]
-
-
-def save_topics(task_id: str, topics: list[dict[str, Any]]) -> None:
-    """按 task 覆盖写入话题段（字幕驱动切分的主功能产物）。"""
-    conn = get_conn()
-    try:
-        conn.execute("DELETE FROM topic_segments WHERE task_id=?", (task_id,))
-        for t in topics:
-            values = []
-            for f in TOPIC_FIELDS:
-                val = t.get(f)
-                if isinstance(val, (list, dict)):
-                    val = json.dumps(val, ensure_ascii=False)
-                values.append(val)
-            placeholders = ",".join("?" for _ in TOPIC_FIELDS)
-            sql = f"INSERT INTO topic_segments ({','.join(TOPIC_FIELDS)}) VALUES ({placeholders})"
-            conn.execute(sql, values)
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def get_topics(task_id: str) -> list[dict[str, Any]]:
-    conn = get_conn()
-    try:
-        rows = conn.execute(
-            "SELECT * FROM topic_segments WHERE task_id=? ORDER BY topic_index ASC", (task_id,)
-        ).fetchall()
-        result = []
-        for r in rows:
-            d = dict(r)
-            if d.get("keywords"):
-                try:
-                    d["keywords"] = json.loads(d["keywords"])
-                except Exception:
-                    d["keywords"] = []
-            result.append(d)
-        return result
     finally:
         conn.close()

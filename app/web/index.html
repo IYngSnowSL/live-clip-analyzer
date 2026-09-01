@@ -30,27 +30,17 @@
             </div>
           </div>
           <div class="form-row">
-            <label for="danmaku_path">弹幕 XML 路径</label>
+            <label for="danmaku_path">弹幕 XML 路径（可选）</label>
             <div class="path-row">
               <input type="text" id="danmaku_path" placeholder="D:\videos\live_001.xml" />
               <button type="button" class="btn ghost btn-browse" data-target="danmaku_path" data-filter="xml" title="浏览 XML 文件">📂</button>
             </div>
           </div>
-          <div class="form-row two-col">
-            <div>
-              <label for="offset_seconds">弹幕偏移（秒）</label>
-              <input type="number" id="offset_seconds" value="0" step="0.5" />
-            </div>
-            <div>
-              <label for="output_languages">输出语言</label>
-              <select id="output_languages">
-                <option value="zh,en">中文 + English</option>
-                <option value="zh">中文</option>
-                <option value="en">English</option>
-              </select>
-            </div>
+          <div class="form-row">
+            <label for="offset_seconds">弹幕偏移（秒）</label>
+            <input type="number" id="offset_seconds" value="0" step="0.5" />
           </div>
-          <button type="submit" class="btn btn-primary btn-block">开始分析</button>
+          <button type="submit" class="btn btn-primary btn-block">开始打轴</button>
         </form>
       </section>
 
@@ -60,7 +50,7 @@
       </section>
 
       <div class="sidebar-footer">
-        <span class="version-pill">v0.2.1</span>
+        <span class="version-pill">v0.3.0</span>
         <button type="button" id="btn-settings" class="ghost btn-settings" title="配置 AI 接口与参数">⚙️ 设置</button>
         <span>本地运行 · 个人使用</span>
       </div>
@@ -69,13 +59,13 @@
     <main class="content">
       <section id="empty-state" class="empty-state">
         <div class="empty-icon">🎬</div>
-        <h2>开始分析你的直播录像</h2>
-        <p>在左侧填写 FLV 视频与 B站弹幕 XML 路径，创建任务后即可查看详细时间轴和切片候选。</p>
+        <h2>开始给你的直播录像打轴</h2>
+        <p>在左侧填写视频路径，创建任务后自动分析字幕并打轴：每个可切片片段都有精确起止时间、标题与推荐理由。</p>
         <div class="empty-tags">
-          <span>场景切分</span>
-          <span>弹幕热度</span>
-          <span>ASR 转写</span>
-          <span>画面理解</span>
+          <span>字幕分析</span>
+          <span>自动打轴</span>
+          <span>静音点精修</span>
+          <span>CSV 导出</span>
           <span>切片导出</span>
         </div>
       </section>
@@ -83,53 +73,30 @@
       <section class="card hidden" id="report-card">
         <div class="report-head">
           <div>
-            <div class="report-kicker">LIVE CLIP ANALYZER · REPORT</div>
-            <h2 id="report-title">分析报告</h2>
+            <div class="report-kicker">LIVE CLIP ANALYZER · AXLES</div>
+            <h2 id="report-title">打轴结果</h2>
           </div>
           <div class="actions">
             <button id="btn-refresh" class="ghost">刷新</button>
             <a id="link-video" class="btn ghost" target="_blank">预览视频</a>
-            <a id="link-report-zh" class="btn ghost" target="_blank">中文 Markdown</a>
-            <a id="link-report-en" class="btn ghost" target="_blank">EN Markdown</a>
-            <a id="link-export-json" class="btn ghost" target="_blank">JSON</a>
+            <a id="link-csv" class="btn ghost" target="_blank">导出 CSV</a>
           </div>
           <div class="actions export-actions">
             <label class="check-label"><input type="checkbox" id="export-accurate" /> 精切模式（重编码）</label>
-            <button id="btn-export-all" class="btn btn-primary">批量导出全部候选</button>
+            <button id="btn-export-all" class="btn btn-primary">批量导出全部</button>
           </div>
         </div>
         <div id="report-status" class="report-status"></div>
 
         <div class="section-block">
-          <div class="section-head"><h3>话题目录（字幕切分）</h3></div>
-          <div id="topics-container" class="topics"></div>
-        </div>
-
-        <div class="section-block">
           <div class="section-head">
-            <h3>详细时间轴</h3>
+            <h3>切片轴</h3>
             <div class="filter-row">
-              <select id="rank-filter">
-                <option value="">全部推荐</option>
-                <option value="high">高推荐</option>
-                <option value="medium">中推荐</option>
-                <option value="low">低推荐</option>
-              </select>
               <label for="score-filter">最低评分</label>
               <input type="number" id="score-filter" value="0" min="0" max="10" step="0.5" />
             </div>
           </div>
-          <div id="scenes-container" class="scenes"></div>
-        </div>
-
-        <div class="section-block">
-          <div class="section-head"><h3>长切片候选</h3></div>
-          <div id="long-candidates" class="candidates"></div>
-        </div>
-
-        <div class="section-block">
-          <div class="section-head"><h3>单句素材候选</h3></div>
-          <div id="sentence-candidates" class="candidates"></div>
+          <div id="axles-container" class="axles"></div>
         </div>
 
         <div class="section-block">
@@ -142,9 +109,8 @@
 
   <div id="edit-modal" class="modal hidden">
     <div class="modal-content">
-      <h3>复核编辑</h3>
+      <h3>复核打轴</h3>
       <input type="hidden" id="edit-id" />
-      <input type="hidden" id="edit-type" />
       <div class="form-row two-col">
         <div>
           <label>开始（秒）</label>
@@ -158,20 +124,6 @@
       <div class="form-row">
         <label>标题</label>
         <input type="text" id="edit-title" />
-      </div>
-      <div class="form-row two-col">
-        <div>
-          <label>评分（0-10）</label>
-          <input type="number" id="edit-score" min="0" max="10" step="0.1" />
-        </div>
-        <div>
-          <label>推荐等级</label>
-          <select id="edit-rank">
-            <option value="high">高</option>
-            <option value="medium">中</option>
-            <option value="low">低</option>
-          </select>
-        </div>
       </div>
       <div class="modal-actions">
         <button id="btn-save-review">保存</button>
@@ -221,29 +173,15 @@
         <input type="text" id="cfg-asr-model" placeholder="whisper-1" autocomplete="off" />
       </div>
 
-      <div class="cfg-section">分析参数（可选）</div>
+      <div class="cfg-section">打轴参数（可选）</div>
       <div class="form-row two-col">
         <div>
-          <label for="cfg-scene-min">场景最短（秒）</label>
-          <input type="number" id="cfg-scene-min" min="1" step="1" />
+          <label for="cfg-target-min">目标最短（秒）</label>
+          <input type="number" id="cfg-target-min" min="10" step="10" />
         </div>
         <div>
-          <label for="cfg-scene-max">场景最长（秒）</label>
-          <input type="number" id="cfg-scene-max" min="1" step="1" />
-        </div>
-      </div>
-      <div class="form-row two-col">
-        <div>
-          <label for="cfg-languages">输出语言</label>
-          <select id="cfg-languages">
-            <option value="zh,en">中文 + English</option>
-            <option value="zh">中文</option>
-            <option value="en">English</option>
-          </select>
-        </div>
-        <div>
-          <label for="cfg-asr-lang">ASR 语言（空=自动）</label>
-          <input type="text" id="cfg-asr-lang" placeholder="留空自动 / zh / en" autocomplete="off" />
+          <label for="cfg-target-max">目标最长（秒）</label>
+          <input type="number" id="cfg-target-max" min="30" step="30" />
         </div>
       </div>
       <div class="form-row">

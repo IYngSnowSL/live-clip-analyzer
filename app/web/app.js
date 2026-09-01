@@ -1,9 +1,7 @@
 "use strict";
 
 let currentTaskId = null;
-let currentScenes = [];
-let currentCandidates = [];
-let currentTopics = [];
+let currentAxles = [];
 let timer = null;
 
 const $ = (id) => document.getElementById(id);
@@ -32,6 +30,18 @@ async function api(path, options = {}) {
   return resp.json();
 }
 
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text == null ? "" : String(text);
+  return div.innerHTML;
+}
+
+function escapeAttr(text) {
+  return escapeHtml(text).replace(/"/g, "&quot;");
+}
+
+/* ---------------- 任务列表 ---------------- */
+
 function taskStatusBadge(task) {
   const cls = task.status || "pending";
   const text = { pending: "等待中", running: "运行中", done: "完成", failed: "失败" }[cls] || cls;
@@ -46,7 +56,7 @@ function renderTasks(tasks) {
   }
   box.innerHTML = tasks.map((t) => {
     const progress = t.progress || 0;
-      const active = t.id === currentTaskId ? " active" : "";
+    const active = t.id === currentTaskId ? " active" : "";
     return `
       <div class="task-item${active}">
         <div class="info">
@@ -56,156 +66,98 @@ function renderTasks(tasks) {
         <div class="progress"><div style="width:${progress}%"></div></div>
         ${taskStatusBadge(t)}
         <button data-id="${t.id}" class="btn-view">查看</button>
-          <button data-id="${t.id}" class="btn-delete ghost">删除</button>
+        <button data-id="${t.id}" class="btn-delete ghost">删除</button>
       </div>`;
   }).join("");
   document.querySelectorAll(".btn-view").forEach((btn) => {
     btn.addEventListener("click", () => openReport(btn.dataset.id));
   });
-    document.querySelectorAll(".btn-delete").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        if (!confirm("确定删除该任务及其所有分析产物？")) return;
-        try {
-          await api(`/api/tasks/${btn.dataset.id}`, { method: "DELETE" });
-          await loadTasks();
+  document.querySelectorAll(".btn-delete").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("确定删除该任务及其所有分析产物？")) return;
+      try {
+        await api(`/api/tasks/${btn.dataset.id}`, { method: "DELETE" });
+        await loadTasks();
+        if (currentTaskId === btn.dataset.id) {
+          currentTaskId = null;
+          $("report-card").classList.add("hidden");
+          $("empty-state").classList.remove("hidden");
+        }
+      } catch (err) {
+        if (String(err.message).includes("正在运行") && confirm("任务正在运行，是否强制删除？")) {
+          try {
+            await api(`/api/tasks/${btn.dataset.id}?force=true`, { method: "DELETE" });
+            await loadTasks();
             if (currentTaskId === btn.dataset.id) {
               currentTaskId = null;
               $("report-card").classList.add("hidden");
               $("empty-state").classList.remove("hidden");
             }
-        } catch (err) {
-          if (String(err.message).includes("正在运行") && confirm("任务正在运行，是否强制删除？")) {
-            try {
-              await api(`/api/tasks/${btn.dataset.id}?force=true`, { method: "DELETE" });
-              await loadTasks();
-              if (currentTaskId === btn.dataset.id) {
-                currentTaskId = null;
-                $("report-card").classList.add("hidden");
-                $("empty-state").classList.remove("hidden");
-              }
-            } catch (err2) {
-              alert("强制删除失败：" + err2.message);
-            }
-            return;
+          } catch (err2) {
+            alert("强制删除失败：" + err2.message);
           }
-          alert("删除失败：" + err.message);
+          return;
         }
-      });
+        alert("删除失败：" + err.message);
+      }
     });
+  });
 }
+
+/* ---------------- 打轴结果 ---------------- */
 
 function renderReport(task) {
-  $("report-title").textContent = `分析报告（${task.id}）`;
+  $("report-title").textContent = `打轴结果（${task.id}）`;
   $("report-status").textContent = `状态：${task.status}（${task.progress || 0}%） · ${task.message || ""}`;
   $("link-video").href = `/api/tasks/${task.id}/video`;
-  $("link-report-zh").href = `/api/tasks/${task.id}/report?lang=zh&download=1`;
-  $("link-report-en").href = `/api/tasks/${task.id}/report?lang=en&download=1`;
-  $("link-export-json").href = `/api/tasks/${task.id}/export.json`;
+  $("link-csv").href = `/api/tasks/${task.id}/axles.csv`;
   $("report-card").classList.remove("hidden");
-    $("empty-state").classList.add("hidden");
-    document.body.classList.remove("sidebar-open");
+  $("empty-state").classList.add("hidden");
+  document.body.classList.remove("sidebar-open");
 }
 
-function rankName(rank) {
-  return { high: "高", medium: "中", low: "低" }[rank] || rank || "低";
-}
-
-function renderScenes(scenes) {
-  const rankFilter = $("rank-filter").value;
+function renderAxles(axles) {
   const scoreFilter = Number($("score-filter").value) || 0;
-  const box = $("scenes-container");
-  const filtered = scenes.filter((s) => {
-    if (rankFilter && s.rank !== rankFilter) return false;
-    if (Number(s.final_score || 0) < scoreFilter) return false;
-    return true;
-  });
+  const box = $("axles-container");
+  const filtered = axles.filter((a) => Number(a.score || 0) >= scoreFilter);
   if (!filtered.length) {
-    box.innerHTML = `<div class="muted">没有符合条件的片段。</div>`;
+    box.innerHTML = `<div class="muted">没有符合条件的轴。</div>`;
     return;
   }
-  box.innerHTML = filtered.map((s) => {
-    const keywords = (s.danmaku_keywords || []).join("、") || "（无）";
+  box.innerHTML = filtered.map((a) => {
+    const start = a.review_start ?? a.start;
+    const end = a.review_end ?? a.end;
+    const title = a.review_title || a.title || "";
+    const duration = Math.max(0, Math.round(end - start));
+    const reviewed = a.reviewed ? " · 已复核" : "";
     return `
-      <div class="scene-item rank-${s.rank || "low"}">
+      <div class="axle-item">
         <div class="head">
-          <span class="title"><a class="time-link" target="_blank" href="/static/preview.html?task=${currentTaskId}&t=${s.start}">[${formatTs(s.start)} - ${formatTs(s.end)}]</a> ${escapeHtml(s.title_zh || "")}</span>
-          <span class="badge ${s.rank || "low"}">${rankName(s.rank)} · ${s.final_score ?? 0} 分</span>
+          <span class="title"><a class="time-link" target="_blank" href="/static/preview.html?task=${currentTaskId}&t=${start}">[${formatTs(start)} - ${formatTs(end)}]</a> ${escapeHtml(title)}</span>
+          <span class="badge">${a.score ?? 0} 分 · ${duration}s${reviewed}</span>
         </div>
-        <div class="detail"><b>内容：</b>${escapeHtml(s.summary_zh || "（无）")}</div>
-        <div class="detail"><b>画面：</b>${escapeHtml(s.visual_summary || "（无）")}</div>
-        <div class="detail"><b>语音：</b>${escapeHtml(s.asr_text || "（无）")}</div>
-        <div class="detail"><b>弹幕：</b>数量 ${s.danmaku_count || 0} / 热度 ${s.danmaku_heat ?? 0} / 情绪 ${s.danmaku_emotion ?? 0} / 高频：${escapeHtml(keywords)}</div>
-        ${s.quote ? `<div class="detail"><b>Quote：</b>[${formatTs(s.quote_start ?? s.start)}] ${escapeHtml(s.quote)}</div>` : ""}
+        <div class="meta"><b>理由：</b>${escapeHtml(a.reason || "（无）")}</div>
+        <div class="actions">
+          <button class="btn-edit" data-id="${a.id}">复核打轴</button>
+          <button class="btn-export-one" data-id="${a.id}">导出此切片</button>
+        </div>
       </div>`;
   }).join("");
-}
-
-function renderTopics(topics) {
-  const box = $("topics-container");
-  if (!topics || !topics.length) {
-    box.innerHTML = `<div class="muted">暂无话题段（无音轨或未完成字幕切分）。</div>`;
-    return;
-  }
-  box.innerHTML = topics.map((tp) => {
-    const keywords = (tp.keywords || []).join("、") || "（无）";
-    return `
-      <div class="topic-item">
-        <div class="head">
-          <span class="title"><a class="time-link" target="_blank" href="/static/preview.html?task=${currentTaskId}&t=${tp.start}">[${formatTs(tp.start)} - ${formatTs(tp.end)}]</a> ${escapeHtml(tp.title_zh || "")}</span>
-        </div>
-        <div class="detail">${escapeHtml(tp.summary_zh || "（无）")}</div>
-        <div class="detail"><b>关键词：</b>${escapeHtml(keywords)}</div>
-      </div>`;
-  }).join("");
-}
-
-function renderCandidates(candidates) {
-  const longBox = $("long-candidates");
-  const sentenceBox = $("sentence-candidates");
-  const long = candidates.filter((c) => c.type === "long");
-  const sentence = candidates.filter((c) => c.type === "sentence");
-
-  longBox.innerHTML = long.length ? long.map((c) => candidateCard(c)).join("") : `<div class="muted">暂无长切片候选。</div>`;
-  sentenceBox.innerHTML = sentence.length ? sentence.map((c) => candidateCard(c)).join("") : `<div class="muted">暂无单句素材候选。</div>`;
-
   document.querySelectorAll(".btn-edit").forEach((btn) => {
     btn.addEventListener("click", () => openEdit(btn.dataset.id));
   });
-    document.querySelectorAll(".btn-export-one").forEach((btn) => {
-      btn.addEventListener("click", () => exportCandidateIds([Number(btn.dataset.id)], btn));
-    });
+  document.querySelectorAll(".btn-export-one").forEach((btn) => {
+    btn.addEventListener("click", () => exportAxleIds([Number(btn.dataset.id)], btn));
+  });
 }
 
-function candidateCard(c) {
-  const start = c.review_start ?? c.start;
-  const end = c.review_end ?? c.end;
-  const score = c.review_score ?? c.score;
-  const rank = c.review_rank || (score >= 7.5 ? "high" : score >= 5 ? "medium" : "low");
-  const title = c.review_title || c.title_zh || "";
-  const timeText = c.type === "sentence" ? `[${formatTs(start)}]` : `[${formatTs(start)} - ${formatTs(end)}]`;
-  return `
-    <div class="candidate">
-      <div class="head">
-        <span class="title"><a class="time-link" target="_blank" href="/static/preview.html?task=${currentTaskId}&t=${start}">${timeText}</a> ${escapeHtml(title)}</span>
-        <span class="badge ${rank}">${rankName(rank)} · ${score ?? 0} 分</span>
-      </div>
-      <div class="meta"><b>理由：</b>${escapeHtml(c.reason_zh || "（无）")}</div>
-      ${(c.keywords || []).length ? `<div class="meta"><b>关键词：</b>${escapeHtml(c.keywords.join("、"))}</div>` : ""}
-      <div class="actions"><button class="btn-edit" data-id="${c.id}">复核编辑</button>
-          <button class="btn-export-one" data-id="${c.id}">导出此切片</button></div>
-    </div>`;
-}
-
-function openEdit(candidateId) {
-  const c = currentCandidates.find((x) => String(x.id) === String(candidateId));
-  if (!c) return;
-  $("edit-id").value = c.id;
-  $("edit-type").value = c.type;
-  $("edit-start").value = c.review_start ?? c.start ?? 0;
-  $("edit-end").value = c.review_end ?? c.end ?? 0;
-  $("edit-title").value = c.review_title || c.title_zh || "";
-  $("edit-score").value = c.review_score ?? c.score ?? 0;
-  $("edit-rank").value = c.review_rank || "medium";
+function openEdit(axleId) {
+  const a = currentAxles.find((x) => String(x.id) === String(axleId));
+  if (!a) return;
+  $("edit-id").value = a.id;
+  $("edit-start").value = a.review_start ?? a.start ?? 0;
+  $("edit-end").value = a.review_end ?? a.end ?? 0;
+  $("edit-title").value = a.review_title || a.title || "";
   $("edit-modal").classList.remove("hidden");
 }
 
@@ -213,22 +165,20 @@ async function openReport(taskId) {
   currentTaskId = taskId;
   const task = await api(`/api/tasks/${taskId}`);
   renderReport(task);
-    await loadTasks();
-    $("export-results").innerHTML = `<div class="muted">暂无导出结果。</div>`;
-    await loadExportResults();
+  await loadTasks();
+  $("export-results").innerHTML = `<div class="muted">暂无导出结果。</div>`;
+  await loadExportResults();
   await refreshReportData();
   startPolling(taskId);
 }
 
 async function refreshReportData() {
   if (!currentTaskId) return;
-  currentScenes = await api(`/api/tasks/${currentTaskId}/scenes`);
-  currentCandidates = await api(`/api/tasks/${currentTaskId}/candidates`);
-  currentTopics = await api(`/api/tasks/${currentTaskId}/topics`);
-  renderScenes(currentScenes);
-  renderCandidates(currentCandidates);
-  renderTopics(currentTopics);
+  currentAxles = await api(`/api/tasks/${currentTaskId}/axles`);
+  renderAxles(currentAxles);
 }
+
+/* ---------------- 导出 ---------------- */
 
 function renderExportResults(files) {
   const box = $("export-results");
@@ -260,7 +210,7 @@ async function loadExportResults() {
   }
 }
 
-async function exportCandidateIds(candidateIds, btn) {
+async function exportAxleIds(axleIds, btn) {
   if (!currentTaskId) return;
   const oldText = btn ? btn.textContent : "";
   if (btn) {
@@ -268,7 +218,7 @@ async function exportCandidateIds(candidateIds, btn) {
     btn.textContent = "导出中…";
   }
   try {
-    const payload = candidateIds ? { candidate_ids: candidateIds } : {};
+    const payload = axleIds ? { axle_ids: axleIds } : {};
     if ($("export-accurate").checked) payload.accurate = true;
     const result = await api(`/api/tasks/${currentTaskId}/export`, {
       method: "POST",
@@ -305,17 +255,8 @@ function startPolling(taskId) {
   }, 3000);
 }
 
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text == null ? "" : String(text);
-  return div.innerHTML;
-}
-
-function escapeAttr(text) {
-  return escapeHtml(text).replace(/"/g, "&quot;");
-}
-
 /* ---------------- 文件浏览器 ---------------- */
+
 let fbPath = "";
 let fbParent = "";
 let fbTarget = null;
@@ -348,7 +289,6 @@ async function loadFileList(path) {
     renderFileList(data);
   } catch (err) {
     if (path) {
-      // 当前路径无效（输入框里可能是文件路径或不存在），回退到磁盘根
       loadFileList("");
     } else {
       $("fb-list").innerHTML = `<div class="muted">加载失败：${escapeHtml(err.message)}</div>`;
@@ -358,7 +298,7 @@ async function loadFileList(path) {
 
 function renderFileList(data) {
   $("fb-path").textContent = fbPath || "我的电脑";
-  $("btn-fb-up").disabled = !fbPath; // 只要进入了某个目录（有 path）即可回退
+  $("btn-fb-up").disabled = !fbPath;
   const parts = [];
   (data.dirs || []).forEach((d) => {
     parts.push(`<div class="fb-item fb-dir" data-path="${escapeAttr(d.path)}"><span class="fb-icon">📁</span><span class="fb-name">${escapeHtml(d.name)}</span></div>`);
@@ -393,11 +333,12 @@ function formatSize(bytes) {
 }
 
 function fileListUp() {
-  if (!fbPath) return;             // 已在盘符列表，无法再回退
-  loadFileList(fbParent || "");    // 盘符根时 fbParent 为空，回到盘符列表
+  if (!fbPath) return;
+  loadFileList(fbParent || "");
 }
 
 /* ---------------- 设置 / 配置页 ---------------- */
+
 async function loadConfig() {
   const cfg = await api("/api/config");
   $("cfg-base-url").value = cfg.base_url || "";
@@ -405,10 +346,8 @@ async function loadConfig() {
   $("cfg-vision-model").value = cfg.vision_model || "";
   $("cfg-llm-model").value = cfg.llm_model || "";
   $("cfg-asr-model").value = cfg.asr_model || "";
-  $("cfg-scene-min").value = cfg.scene_min_seconds ?? 8;
-  $("cfg-scene-max").value = cfg.scene_max_seconds ?? 30;
-  $("cfg-languages").value = (cfg.report_languages || ["zh", "en"]).join(",");
-  $("cfg-asr-lang").value = cfg.asr_language || "";
+  $("cfg-target-min").value = cfg.target_min_seconds ?? 60;
+  $("cfg-target-max").value = cfg.target_max_seconds ?? 180;
   $("cfg-export-accurate").checked = !!cfg.export_accurate;
   $("cfg-key-hint").textContent = cfg.has_api_key
     ? "已配置（显示为掩码，保留掩码则不变更）"
@@ -427,11 +366,9 @@ async function saveConfig() {
     vision_model: $("cfg-vision-model").value.trim(),
     llm_model: $("cfg-llm-model").value.trim(),
     asr_model: $("cfg-asr-model").value.trim(),
-    scene_min_seconds: Number($("cfg-scene-min").value) || 8,
-    scene_max_seconds: Number($("cfg-scene-max").value) || 30,
+    target_min_seconds: Number($("cfg-target-min").value) || 60,
+    target_max_seconds: Number($("cfg-target-max").value) || 180,
     export_accurate: $("cfg-export-accurate").checked,
-    report_languages: $("cfg-languages").value.split(",").map((s) => s.trim()).filter(Boolean),
-    asr_language: $("cfg-asr-lang").value.trim(),
   };
   if (!payload.base_url) {
     alert("接口地址 base_url 不能为空");
@@ -446,10 +383,12 @@ async function saveConfig() {
   }
 }
 
+/* ---------------- 初始化 ---------------- */
+
 async function init() {
-    $("sidebar-toggle").addEventListener("click", () => {
-      document.body.classList.toggle("sidebar-open");
-    });
+  $("sidebar-toggle").addEventListener("click", () => {
+    document.body.classList.toggle("sidebar-open");
+  });
   document.querySelectorAll(".btn-browse").forEach((btn) => {
     btn.addEventListener("click", () => openFileBrowser(btn.dataset.target, btn.dataset.filter));
   });
@@ -464,13 +403,13 @@ async function init() {
   $("config-modal").addEventListener("click", (e) => {
     if (e.target === $("config-modal")) $("config-modal").classList.add("hidden");
   });
+
   $("create-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const payload = {
       video_path: $("video_path").value.trim(),
       danmaku_path: $("danmaku_path").value.trim() || null,
       offset_seconds: Number($("offset_seconds").value) || 0,
-      output_languages: $("output_languages").value.split(",").map((x) => x.trim()).filter(Boolean),
     };
     try {
       const task = await api("/api/tasks", {
@@ -479,21 +418,19 @@ async function init() {
       });
       $("create-form").reset();
       $("offset_seconds").value = "0";
-      $("output_languages").value = "zh,en";
       await loadTasks();
-        await openReport(task.id);
+      await openReport(task.id);
     } catch (err) {
       alert("创建失败：" + err.message);
     }
   });
 
-  $("rank-filter").addEventListener("change", () => renderScenes(currentScenes));
-  $("score-filter").addEventListener("input", () => renderScenes(currentScenes));
+  $("score-filter").addEventListener("input", () => renderAxles(currentAxles));
   $("btn-refresh").addEventListener("click", () => refreshReportData().catch((e) => alert(e.message)));
-    $("btn-export-all").addEventListener("click", async () => {
-      if (!confirm("确定批量导出当前全部候选切片？")) return;
-      await exportCandidateIds(null, $("btn-export-all"));
-    });
+  $("btn-export-all").addEventListener("click", async () => {
+    if (!confirm("确定批量导出当前全部切片轴？")) return;
+    await exportAxleIds(null, $("btn-export-all"));
+  });
   $("btn-cancel-review").addEventListener("click", () => $("edit-modal").classList.add("hidden"));
   $("btn-save-review").addEventListener("click", async () => {
     const id = $("edit-id").value;
@@ -501,11 +438,9 @@ async function init() {
       start: Number($("edit-start").value),
       end: Number($("edit-end").value),
       title: $("edit-title").value,
-      score: Number($("edit-score").value),
-      rank: $("edit-rank").value,
     };
     try {
-      await api(`/api/tasks/${currentTaskId}/candidates/${id}/review`, {
+      await api(`/api/tasks/${currentTaskId}/axles/${id}/review`, {
         method: "PUT",
         body: JSON.stringify(payload),
       });

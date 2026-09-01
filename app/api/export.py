@@ -1,4 +1,4 @@
-"""视频切片导出接口。"""
+"""切片导出接口：把打轴结果按起止时间裁剪成独立视频文件。"""
 from __future__ import annotations
 
 import json
@@ -23,7 +23,7 @@ class ClipSpec(BaseModel):
 
 
 class ExportPayload(BaseModel):
-    candidate_ids: list[int] | None = None
+    axle_ids: list[int] | None = None
     clips: list[ClipSpec] | None = None
     accurate: bool | None = None
 
@@ -40,10 +40,10 @@ def _get_task_or_404(task_id: str) -> dict:
     return task
 
 
-def _candidate_to_clip(c: dict) -> dict:
-    start = c.get("review_start") if c.get("review_start") is not None else c.get("start")
-    end = c.get("review_end") if c.get("review_end") is not None else c.get("end")
-    title = c.get("review_title") or c.get("title_zh") or c.get("title_en") or ""
+def _axle_to_clip(a: dict) -> dict:
+    start = a.get("review_start") if a.get("review_start") is not None else a.get("start")
+    end = a.get("review_end") if a.get("review_end") is not None else a.get("end")
+    title = a.get("review_title") or a.get("title") or ""
     return {"start": float(start), "end": float(end), "title": str(title)}
 
 
@@ -61,16 +61,16 @@ async def export_task_clips(task_id: str, payload: ExportPayload):
 
     # 组装待导出切片
     clips: list[dict] = []
-    if payload.candidate_ids is not None:
-        ids = set(payload.candidate_ids)
-        candidates = models.get_candidates(task_id)
-        clips = [_candidate_to_clip(c) for c in candidates if c.get("id") in ids]
+    if payload.axle_ids is not None:
+        ids = set(payload.axle_ids)
+        axles = models.get_axles(task_id)
+        clips = [_axle_to_clip(a) for a in axles if a.get("id") in ids]
         if not clips:
-            raise HTTPException(404, "未找到指定的候选切片")
+            raise HTTPException(404, "未找到指定的轴")
     elif payload.clips is not None:
         clips = [{"start": c.start, "end": c.end, "title": c.title} for c in payload.clips]
     else:
-        clips = [_candidate_to_clip(c) for c in models.get_candidates(task_id)]
+        clips = [_axle_to_clip(a) for a in models.get_axles(task_id)]
 
     if not clips:
         raise HTTPException(400, "当前没有可导出的切片")

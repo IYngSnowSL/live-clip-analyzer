@@ -25,11 +25,9 @@ _FIELD_MAP: dict[str, str] = {
     "vision_model": "ai.vision_model",
     "llm_model": "ai.llm_model",
     "asr_model": "ai.asr_model",
-    "scene_min_seconds": "scene.min_scene_seconds",
-    "scene_max_seconds": "scene.max_scene_seconds",
+    "target_min_seconds": "axle.target_min_seconds",
+    "target_max_seconds": "axle.target_max_seconds",
     "export_accurate": "export.accurate",
-    "report_languages": "report.languages",
-    "asr_language": "asr.language",
 }
 
 _PLACEHOLDER_KEY = "sk-xxxx"
@@ -89,11 +87,9 @@ class ConfigUpdate(BaseModel):
     vision_model: str | None = None
     llm_model: str | None = None
     asr_model: str | None = None
-    scene_min_seconds: float | None = None
-    scene_max_seconds: float | None = None
+    target_min_seconds: float | None = None
+    target_max_seconds: float | None = None
     export_accurate: bool | None = None
-    report_languages: list[str] | None = None
-    asr_language: str | None = None
 
 
 @router.put("")

@@ -19,7 +19,6 @@ class TaskCreate(BaseModel):
     video_path: str
     danmaku_path: Optional[str] = None
     offset_seconds: float = 0.0
-    output_languages: Optional[list[str]] = None
 
 
 @router.post("")
@@ -30,18 +29,10 @@ async def create_task(payload: TaskCreate):
     if payload.danmaku_path and not Path(payload.danmaku_path).exists():
         raise HTTPException(400, f"弹幕文件不存在: {payload.danmaku_path}")
 
-    cfg = load_config()
-    default_langs = list(cfg.report.languages) if cfg.report.languages else ["zh", "en"]
-    langs = payload.output_languages or default_langs
-    langs = [x.strip() for x in langs if x.strip() in ("zh", "en")]
-    if not langs:
-        langs = default_langs
-
     task = models.create_task(
         video_path=str(video_path.resolve()),
         danmaku_path=str(Path(payload.danmaku_path).resolve()) if payload.danmaku_path else None,
         offset_seconds=payload.offset_seconds,
-        output_languages=langs,
     )
     start_task(task["id"])
     return task
