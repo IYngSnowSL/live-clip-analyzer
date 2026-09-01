@@ -2,6 +2,10 @@
 
 ## v0.2.1 — 配置安全与健壮性
 
+### 新功能
+- 路径输入框新增「浏览」按钮：打开文件选择对话框导航本地目录，点击文件自动回填路径
+  （后端新增 `GET /api/files/ls`、`GET /api/files/drives`，视频 / XML 按扩展名过滤）
+
 ### 配置安全
 - 配置改为四级优先级：默认值 < `config.yaml` < `config.local.yaml` < `LCA_*` 环境变量
 - 新增 `config.local.yaml` 覆盖机制（git 忽略，放真实 key）
