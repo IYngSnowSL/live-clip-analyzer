@@ -361,6 +361,55 @@ function fileListUp() {
   loadFileList(fbParent || "");    // 盘符根时 fbParent 为空，回到盘符列表
 }
 
+/* ---------------- 设置 / 配置页 ---------------- */
+async function loadConfig() {
+  const cfg = await api("/api/config");
+  $("cfg-base-url").value = cfg.base_url || "";
+  $("cfg-api-key").value = cfg.api_key || "";
+  $("cfg-vision-model").value = cfg.vision_model || "";
+  $("cfg-llm-model").value = cfg.llm_model || "";
+  $("cfg-asr-model").value = cfg.asr_model || "";
+  $("cfg-scene-min").value = cfg.scene_min_seconds ?? 8;
+  $("cfg-scene-max").value = cfg.scene_max_seconds ?? 30;
+  $("cfg-languages").value = (cfg.report_languages || ["zh", "en"]).join(",");
+  $("cfg-asr-lang").value = cfg.asr_language || "";
+  $("cfg-export-accurate").checked = !!cfg.export_accurate;
+  $("cfg-key-hint").textContent = cfg.has_api_key
+    ? "已配置（显示为掩码，保留掩码则不变更）"
+    : "尚未配置 API Key，请填入你的密钥";
+}
+
+function openConfig() {
+  $("config-modal").classList.remove("hidden");
+  loadConfig().catch((e) => alert("加载配置失败：" + e.message));
+}
+
+async function saveConfig() {
+  const payload = {
+    base_url: $("cfg-base-url").value.trim(),
+    api_key: $("cfg-api-key").value.trim(),
+    vision_model: $("cfg-vision-model").value.trim(),
+    llm_model: $("cfg-llm-model").value.trim(),
+    asr_model: $("cfg-asr-model").value.trim(),
+    scene_min_seconds: Number($("cfg-scene-min").value) || 8,
+    scene_max_seconds: Number($("cfg-scene-max").value) || 30,
+    export_accurate: $("cfg-export-accurate").checked,
+    report_languages: $("cfg-languages").value.split(",").map((s) => s.trim()).filter(Boolean),
+    asr_language: $("cfg-asr-lang").value.trim(),
+  };
+  if (!payload.base_url) {
+    alert("接口地址 base_url 不能为空");
+    return;
+  }
+  try {
+    await api("/api/config", { method: "PUT", body: JSON.stringify(payload) });
+    $("config-modal").classList.add("hidden");
+    alert("配置已保存，下一个新建任务生效");
+  } catch (err) {
+    alert("保存失败：" + err.message);
+  }
+}
+
 async function init() {
     $("sidebar-toggle").addEventListener("click", () => {
       document.body.classList.toggle("sidebar-open");
@@ -372,6 +421,12 @@ async function init() {
   $("btn-fb-cancel").addEventListener("click", () => $("file-modal").classList.add("hidden"));
   $("file-modal").addEventListener("click", (e) => {
     if (e.target === $("file-modal")) $("file-modal").classList.add("hidden");
+  });
+  $("btn-settings").addEventListener("click", openConfig);
+  $("btn-cancel-config").addEventListener("click", () => $("config-modal").classList.add("hidden"));
+  $("btn-save-config").addEventListener("click", saveConfig);
+  $("config-modal").addEventListener("click", (e) => {
+    if (e.target === $("config-modal")) $("config-modal").classList.add("hidden");
   });
   $("create-form").addEventListener("submit", async (e) => {
     e.preventDefault();

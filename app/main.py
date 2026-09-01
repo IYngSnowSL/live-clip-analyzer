@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .api.config import router as config_router
 from .api.export import router as export_router
 from .api.files import router as files_router
 from .api.report import router as report_router
@@ -35,6 +36,7 @@ app.include_router(tasks_router)
 app.include_router(report_router)
 app.include_router(export_router)
 app.include_router(files_router)
+app.include_router(config_router)
 
 WEB_DIR = PROJECT_ROOT / "app" / "web"
 app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")

@@ -61,6 +61,7 @@
 
       <div class="sidebar-footer">
         <span class="version-pill">v0.2.1</span>
+        <button type="button" id="btn-settings" class="ghost btn-settings" title="配置 AI 接口与参数">⚙️ 设置</button>
         <span>本地运行 · 个人使用</span>
       </div>
     </aside>
@@ -182,6 +183,76 @@
       <div class="modal-actions">
         <button id="btn-fb-up" class="ghost">↑ 上一级</button>
         <button id="btn-fb-cancel" class="ghost">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="config-modal" class="modal hidden">
+    <div class="modal-content config-modal">
+      <h3>⚙️ 设置</h3>
+
+      <div class="cfg-section">AI 接口（必填）</div>
+      <div class="form-row">
+        <label for="cfg-base-url">接口地址 base_url</label>
+        <input type="text" id="cfg-base-url" placeholder="https://api.openai.com/v1" autocomplete="off" />
+      </div>
+      <div class="form-row">
+        <label for="cfg-api-key">API Key</label>
+        <input type="password" id="cfg-api-key" placeholder="sk-..." autocomplete="off" />
+        <div class="cfg-hint" id="cfg-key-hint"></div>
+      </div>
+      <div class="form-row two-col">
+        <div>
+          <label for="cfg-vision-model">视觉模型</label>
+          <input type="text" id="cfg-vision-model" placeholder="gpt-4o" autocomplete="off" />
+        </div>
+        <div>
+          <label for="cfg-llm-model">文本模型</label>
+          <input type="text" id="cfg-llm-model" placeholder="gpt-4o-mini" autocomplete="off" />
+        </div>
+      </div>
+      <div class="form-row">
+        <label for="cfg-asr-model">ASR 转写模型</label>
+        <input type="text" id="cfg-asr-model" placeholder="whisper-1" autocomplete="off" />
+      </div>
+
+      <div class="cfg-section">分析参数（可选）</div>
+      <div class="form-row two-col">
+        <div>
+          <label for="cfg-scene-min">场景最短（秒）</label>
+          <input type="number" id="cfg-scene-min" min="1" step="1" />
+        </div>
+        <div>
+          <label for="cfg-scene-max">场景最长（秒）</label>
+          <input type="number" id="cfg-scene-max" min="1" step="1" />
+        </div>
+      </div>
+      <div class="form-row two-col">
+        <div>
+          <label for="cfg-languages">输出语言</label>
+          <select id="cfg-languages">
+            <option value="zh,en">中文 + English</option>
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <div>
+          <label for="cfg-asr-lang">ASR 语言（空=自动）</label>
+          <input type="text" id="cfg-asr-lang" placeholder="留空自动 / zh / en" autocomplete="off" />
+        </div>
+      </div>
+      <div class="form-row">
+        <label class="check-label">
+          <input type="checkbox" id="cfg-export-accurate" />
+          精切模式（重编码，起点更准；不勾选则无损快速剪切）
+        </label>
+      </div>
+
+      <div class="cfg-hint">保存后，下一个新建任务即使用新配置（无需重启）。若某项被环境变量 LCA_* 覆盖，环境变量优先于此处配置。</div>
+
+      <div class="modal-actions">
+        <button id="btn-save-config">保存</button>
+        <button id="btn-cancel-config" class="ghost">取消</button>
       </div>
     </div>
   </div>
