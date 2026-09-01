@@ -81,7 +81,16 @@ async def run_task(task_id: str) -> None:
 
         # 2. 并行：转封装 + 音频切块 + 场景检测；同时解析弹幕
         update_task(task_id, progress=10, message="转封装 / 音频切分 / 场景检测中…")
-        convert_coro = ff.convert_to_mp4(video_path, converted_dir / "video.mp4")
+        # 源文件已是浏览器可播的 MP4（H.264 + AAC/MP3/无音轨）时跳过转封装
+        skip_convert = (
+            video_path.suffix.lower() == ".mp4"
+            and info["video_codec"] == "h264"
+            and info["audio_codec"] in ("aac", "mp3", "")
+        )
+        if skip_convert:
+            convert_coro = asyncio.sleep(0)
+        else:
+            convert_coro = ff.convert_to_mp4(video_path, converted_dir / "video.mp4")
         audio_coro = ff.extract_audio_chunks(video_path, chunks_dir, int(cfg.asr.chunk_seconds))
         scene_coro = sd.detect_scenes(video_path, duration, float(cfg.scene.threshold))
 

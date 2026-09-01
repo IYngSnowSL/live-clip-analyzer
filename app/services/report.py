@@ -82,7 +82,11 @@ def _scene_to_md(sc: dict, lang: str) -> str:
 
 def _candidate_to_md(c: dict, lang: str) -> str:
     t = _LANG[lang]
-    title = c.get("review_title") or (c.get("title_zh") if lang == "zh" else c.get("title_en"))
+    if c["type"] == "sentence":
+        # sentence 的 title 是原话引用，双语报告均显示原文
+        title = c.get("review_title") or c.get("title_zh") or ""
+    else:
+        title = c.get("review_title") or (c.get("title_zh") if lang == "zh" else c.get("title_en"))
     start = c.get("review_start") if c.get("review_start") is not None else c.get("start")
     end = c.get("review_end") if c.get("review_end") is not None else c.get("end")
     score = c.get("review_score") if c.get("review_score") is not None else c.get("score")

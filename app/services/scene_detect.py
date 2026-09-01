@@ -87,12 +87,11 @@ def refine_scenes(boundaries: list[float], duration: float,
     while i < n:
         a, b = raw[i]
         if b - a < min_seconds:
-            if merged:
-                pa, pb = merged[-1]
-                if abs(pa - a) < 1e-6 or abs(pb - a) < 1e-6:
-                    merged[-1] = (pa, b)
-                    i += 1
-                    continue
+            if merged and abs(merged[-1][1] - a) < 1e-6:
+                # 与上一段相邻，直接并入上一段
+                merged[-1] = (merged[-1][0], b)
+                i += 1
+                continue
             if i + 1 < n:
                 # 合并到下一段
                 raw[i + 1] = (a, raw[i + 1][1])

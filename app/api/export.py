@@ -1,6 +1,7 @@
 """视频切片导出接口。"""
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -86,7 +87,34 @@ async def export_task_clips(task_id: str, payload: ExportPayload):
         accurate=accurate,
         concurrency=int(cfg.export.concurrency),
     )
+    _save_exports_meta(out_dir, results)
     return {"task_id": task_id, "export_dir": str(out_dir), "files": results}
+
+
+def _exports_meta_path(out_dir: Path) -> Path:
+    return out_dir / "exports_meta.json"
+
+
+def _save_exports_meta(out_dir: Path, results: list[dict]) -> None:
+    """把导出结果（含 title）持久化，刷新页面后仍可显示标题。"""
+    meta_path = _exports_meta_path(out_dir)
+    meta: dict[str, dict] = {}
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+    for r in results:
+        if not r.get("filename"):
+            continue
+        meta[r["filename"]] = {
+            "title": r.get("title") or "",
+            "start": r.get("start") or 0,
+            "end": r.get("end") or 0,
+            "status": r.get("status") or "",
+            "error": r.get("error") or "",
+        }
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 @router.get("/{task_id}/exports")
@@ -95,16 +123,25 @@ async def list_exports(task_id: str):
     base = _task_dir(task_id) / "exports"
     if not base.exists():
         return []
-    pattern = re.compile(r"clip_\d+_(\d+)s_(\d+)s\.mp4$")
+    meta: dict[str, dict] = {}
+    meta_path = _exports_meta_path(base)
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+    pattern = re.compile(r"clip_\d+_(\d+)s_(\d+)s(?:_\d+)?\.mp4$")
     files = []
     for p in sorted(base.glob("*.mp4")):
         m = pattern.match(p.name)
+        info = meta.get(p.name, {})
         files.append({
             "filename": p.name,
-            "start": int(m.group(1)) if m else 0,
-            "end": int(m.group(2)) if m else 0,
-            "title": "",
-            "status": "ok",
+            "start": int(m.group(1)) if m else (info.get("start") or 0),
+            "end": int(m.group(2)) if m else (info.get("end") or 0),
+            "title": info.get("title") or "",
+            "status": info.get("status") or "ok",
+            "error": info.get("error") or "",
             "size": p.stat().st_size,
         })
     return files

@@ -134,6 +134,12 @@ async def get_video(task_id: str, request: Request):
     _get_task_or_404(task_id)
     path = _task_dir(task_id) / "converted" / "video.mp4"
     if not path.exists():
+        # 源文件本身是 MP4 时未做转封装，直接回退到源文件
+        task = models.get_task(task_id)
+        src = Path(task["video_path"]) if task and task.get("video_path") else None
+        if src and src.exists() and src.suffix.lower() == ".mp4":
+            path = src
+    if not path.exists():
         raise HTTPException(404, "转封装视频不存在")
     return _range_response(path, request, "video/mp4")
 

@@ -8,7 +8,7 @@ from typing import Any
 from .database import get_conn
 
 
-def _row_to_dict(row) -> dict[str, Any]:
+def _row_to_dict(row) -> dict[str, Any] | None:
     return dict(row) if row is not None else None
 
 
@@ -69,6 +69,20 @@ def update_task(task_id: str, **fields: Any) -> None:
     try:
         conn.execute(sql, [fields[k] for k in keys] + [task_id])
         conn.commit()
+    finally:
+        conn.close()
+
+
+def mark_interrupted_tasks() -> int:
+    """启动时把上次进程遗留的 running/pending 任务标记为失败，返回受影响行数。"""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "UPDATE tasks SET status='failed', message='服务重启，任务中断', "
+            "updated_at=datetime('now','localtime') WHERE status IN ('running','pending')"
+        )
+        conn.commit()
+        return cur.rowcount
     finally:
         conn.close()
 

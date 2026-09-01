@@ -66,7 +66,6 @@ def _build_prompt(scene: dict, asr_text: str) -> str:
   "summary_en": "English summary: what is happening, 1-3 sentences",
   "fun_score": 0到10的有趣程度评分（数字）,
   "highlight_score": 0到10的高光/名场面/二创潜力评分（数字）,
-  "rank": "high/medium/low 三选一",
   "quote": "从语音转写中选出一句最适合做切片二创的原话（5-50字，必须原样引用），没有就输出空字符串",
   "quote_reason_zh": "这句为什么适合二创，中文一句话；没有则空字符串",
   "quote_reason_en": "English reason, one sentence, or empty string"
@@ -114,10 +113,7 @@ async def analyze_scenes(client, scenes: list[dict], asr_segments: list[dict],
         except (TypeError, ValueError):
             scene["highlight_score"] = 0.0
 
-        scene["rank"] = str(data.get("rank") or "medium").strip().lower()
-        if scene["rank"] not in ("high", "medium", "low"):
-            scene["rank"] = "medium"
-
+        # rank 由 score_scenes 根据 final_score 统一计算，LLM 不再输出 rank
         quote = str(data.get("quote") or "").strip()
         scene["quote"] = quote
         scene["quote_reason_zh"] = str(data.get("quote_reason_zh") or "").strip()

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Any
 
@@ -92,6 +93,10 @@ async def export_clips(video_path: str | Path, clips: list[dict[str, Any]],
 
         filename = build_clip_filename(index + 1, start, end)
         out_path = out_dir / filename
+        if out_path.exists():
+            # 同名片段重复导出时追加时间戳，避免覆盖旧文件
+            filename = f"clip_{index + 1:03d}_{int(start)}s_{int(end)}s_{int(time.time())}.mp4"
+            out_path = out_dir / filename
         try:
             async with sem:
                 await export_clip(video_path, start, end, out_path, accurate=accurate)

@@ -59,12 +59,12 @@ async def get_task_detail(task_id: str):
 
 
 @router.delete("/{task_id}")
-async def delete_task(task_id: str):
+async def delete_task(task_id: str, force: bool = False):
     task = models.get_task(task_id)
     if not task:
         raise HTTPException(404, "任务不存在")
-    if task.get("status") in ("running", "pending"):
-        raise HTTPException(400, "任务正在运行，无法删除")
+    if task.get("status") in ("running", "pending") and not force:
+        raise HTTPException(400, "任务正在运行，无法删除（可加 ?force=true 强制删除）")
     cfg = load_config()
     task_dir = Path(cfg.data.tasks_dir) / task_id
     if task_dir.exists():
