@@ -69,6 +69,22 @@ CREATE TABLE IF NOT EXISTS candidates (
     review_rank TEXT,
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
+
+CREATE TABLE IF NOT EXISTS topic_segments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    topic_index INTEGER NOT NULL,
+    start REAL NOT NULL,
+    end REAL NOT NULL,
+    title_zh TEXT,
+    title_en TEXT,
+    summary_zh TEXT,
+    summary_en TEXT,
+    keywords TEXT,
+    score REAL,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(task_id, topic_index)
+);
 """
 
 

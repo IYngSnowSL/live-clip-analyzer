@@ -40,6 +40,13 @@ DEFAULTS: dict[str, Any] = {
     "asr": {"chunk_seconds": 1200, "language": ""},
     "vision": {"frame_interval": 15, "max_frames_per_scene": 2},
     "scene": {"min_scene_seconds": 8, "max_scene_seconds": 30, "threshold": 0.35},
+    "segmentation": {
+        "window_seconds": 600,     # 字幕语义切分分窗大小（秒）
+        "overlap_seconds": 60,     # 相邻窗重叠（秒）
+        "threshold": 0.35,         # 相邻窗关键词相似度阈值，越低切得越细
+        "min_topic_seconds": 120,  # 话题段最短时长（秒），过短并入相邻
+        "max_topics": 50,          # 话题段最多输出条数
+    },
     "scoring": {
         "weights": {
             "danmaku_heat": 0.25,

@@ -379,6 +379,22 @@ button.ghost:hover, .btn.ghost:hover {
 .badge.medium { background: var(--medium-bg); color: var(--medium); }
 .badge.low { background: var(--low-bg); color: var(--low); }
 
+/* ---------------- 话题目录 ---------------- */
+.topics { display: flex; flex-direction: column; gap: 10px; }
+.topic-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 13px 15px;
+  transition: box-shadow .15s, border-color .15s;
+}
+.topic-item:hover { box-shadow: var(--shadow-md); border-color: var(--border-strong); }
+.topic-item .head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; }
+.topic-item .title { font-weight: 650; color: var(--text); font-size: 14px; }
+.topic-item .detail { color: var(--text-2); font-size: 13px; margin-top: 7px; }
+.topic-item .detail b { color: var(--text); font-weight: 600; }
+
 /* ---------------- 候选卡片 ---------------- */
 .candidates { display: flex; flex-direction: column; gap: 10px; }
 .candidate {

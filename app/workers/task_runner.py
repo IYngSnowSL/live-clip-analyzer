@@ -7,7 +7,7 @@ import traceback
 from pathlib import Path
 
 from ..config import load_config
-from ..models import get_task, save_candidates, save_scenes, update_task
+from ..models import get_task, save_candidates, save_scenes, save_topics, update_task
 from ..services import danmaku as dm
 from ..services import ffmpeg_utils as ff
 from ..services import scene_detect as sd
@@ -16,6 +16,7 @@ from ..services.asr import transcribe_chunks
 from ..services.candidates import generate_long_candidates, generate_sentence_candidates
 from ..services.report import build_export_json, build_reports
 from ..services.scorer import score_scenes
+from ..services.segmentation import analyze_topics, segment_topics
 from ..services.timeline import analyze_scenes
 from ..services.vision import describe_scenes
 
@@ -165,31 +166,69 @@ async def run_task(task_id: str) -> None:
         frames_by_scene = _map_frames_to_scenes(frame_items, scenes)
         update_task(task_id, progress=50, message=f"抽帧完成，共 {len(frame_items)} 帧")
 
-        # 6. ASR
+        # 6. ASR（asr.json 已存在则复用，避免重复转写计费）
         ai_client = AIClient(cfg.ai)
+        asr_path = tdir / "asr.json"
         if info.get("audio_codec"):
-            update_task(task_id, progress=52, message="ASR 语音转写中…")
-            asr_segments = await transcribe_chunks(ai_client, chunks_dir,
-                                                   int(cfg.asr.chunk_seconds),
-                                                   str(cfg.asr.language or ""))
-            (tdir / "asr.json").write_text(
-                json.dumps(asr_segments, ensure_ascii=False, indent=2), encoding="utf-8")
-            update_task(task_id, progress=60, message=f"ASR 完成，共 {len(asr_segments)} 句")
+            if asr_path.exists():
+                try:
+                    asr_segments = json.loads(asr_path.read_text(encoding="utf-8"))
+                    update_task(task_id, progress=60, message=f"ASR 复用缓存，共 {len(asr_segments)} 句")
+                except Exception:
+                    asr_segments = await transcribe_chunks(ai_client, chunks_dir,
+                                                           int(cfg.asr.chunk_seconds),
+                                                           str(cfg.asr.language or ""))
+                    asr_path.write_text(
+                        json.dumps(asr_segments, ensure_ascii=False, indent=2), encoding="utf-8")
+                    update_task(task_id, progress=60, message=f"ASR 完成，共 {len(asr_segments)} 句")
+            else:
+                update_task(task_id, progress=52, message="ASR 语音转写中…")
+                asr_segments = await transcribe_chunks(ai_client, chunks_dir,
+                                                       int(cfg.asr.chunk_seconds),
+                                                       str(cfg.asr.language or ""))
+                asr_path.write_text(
+                    json.dumps(asr_segments, ensure_ascii=False, indent=2), encoding="utf-8")
+                update_task(task_id, progress=60, message=f"ASR 完成，共 {len(asr_segments)} 句")
         else:
             asr_segments = []
             update_task(task_id, progress=60, message="视频无音轨，跳过 ASR")
 
+        # 6.5 字幕语义切分（字幕驱动切分主功能）
+        if asr_segments:
+            update_task(task_id, progress=61, message="字幕语义切分中…")
+            raw_topics = await segment_topics(ai_client, asr_segments, cfg.segmentation)
+            topics = await analyze_topics(ai_client, raw_topics, int(cfg.ai.concurrency))
+            full_topics = []
+            for i, t in enumerate(topics):
+                full_topics.append({
+                    "task_id": task_id,
+                    "topic_index": i,
+                    "start": t["start"],
+                    "end": t["end"],
+                    "title_zh": t.get("title_zh", ""),
+                    "title_en": t.get("title_en", ""),
+                    "summary_zh": t.get("summary_zh", ""),
+                    "summary_en": t.get("summary_en", ""),
+                    "keywords": t.get("keywords", []),
+                    "score": t.get("score", 0.0),
+                })
+            save_topics(task_id, full_topics)
+            update_task(task_id, progress=68, message=f"字幕切分完成，共 {len(full_topics)} 个话题段")
+        else:
+            full_topics = []
+            save_topics(task_id, [])
+
         # 7. 画面理解
-        update_task(task_id, progress=62, message="画面理解（视觉模型）中…")
+        update_task(task_id, progress=70, message="画面理解（视觉模型）中…")
         await describe_scenes(ai_client, scenes, frames_by_scene,
                               int(cfg.vision.max_frames_per_scene))
-        update_task(task_id, progress=72, message="画面理解完成")
+        update_task(task_id, progress=76, message="画面理解完成")
 
         # 8. 逐段 LLM 分析
-        update_task(task_id, progress=75, message="生成详细时间轴分析…")
+        update_task(task_id, progress=78, message="生成详细时间轴分析…")
         scenes = await analyze_scenes(ai_client, scenes, asr_segments,
                                       int(cfg.ai.concurrency))
-        update_task(task_id, progress=85, message="时间轴分析完成")
+        update_task(task_id, progress=88, message="时间轴分析完成")
 
         # 9. 评分 + 候选
         scenes = score_scenes(scenes, cfg.scoring.weights)
@@ -209,10 +248,12 @@ async def run_task(task_id: str) -> None:
                 languages = ["zh", "en"]
         except (TypeError, ValueError):
             languages = ["zh", "en"]
-        await asyncio.to_thread(build_reports, task, scenes, all_candidates, tdir, languages)
+        await asyncio.to_thread(build_reports, task, scenes, all_candidates, full_topics,
+                                tdir, languages)
         export_path = tdir / "export.json"
         export_path.write_text(
-            json.dumps(build_export_json(task, scenes, all_candidates), ensure_ascii=False, indent=2),
+            json.dumps(build_export_json(task, scenes, all_candidates, full_topics),
+                       ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 

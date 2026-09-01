@@ -204,3 +204,51 @@ def update_candidate_review(task_id: str, candidate_id: int, **fields: Any) -> N
         conn.commit()
     finally:
         conn.close()
+
+
+# ---------------- 话题段 ----------------
+
+TOPIC_FIELDS = [
+    "task_id", "topic_index", "start", "end", "title_zh", "title_en",
+    "summary_zh", "summary_en", "keywords", "score",
+]
+
+
+def save_topics(task_id: str, topics: list[dict[str, Any]]) -> None:
+    """按 task 覆盖写入话题段（字幕驱动切分的主功能产物）。"""
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM topic_segments WHERE task_id=?", (task_id,))
+        for t in topics:
+            values = []
+            for f in TOPIC_FIELDS:
+                val = t.get(f)
+                if isinstance(val, (list, dict)):
+                    val = json.dumps(val, ensure_ascii=False)
+                values.append(val)
+            placeholders = ",".join("?" for _ in TOPIC_FIELDS)
+            sql = f"INSERT INTO topic_segments ({','.join(TOPIC_FIELDS)}) VALUES ({placeholders})"
+            conn.execute(sql, values)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_topics(task_id: str) -> list[dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM topic_segments WHERE task_id=? ORDER BY topic_index ASC", (task_id,)
+        ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            if d.get("keywords"):
+                try:
+                    d["keywords"] = json.loads(d["keywords"])
+                except Exception:
+                    d["keywords"] = []
+            result.append(d)
+        return result
+    finally:
+        conn.close()

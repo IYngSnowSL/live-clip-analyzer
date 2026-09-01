@@ -32,6 +32,13 @@ scene:
   max_scene_seconds: 30                 # 场景最长时长（秒），超过自动切分，也即时间轴颗粒度
   threshold: 0.35                       # 场景切换灵敏度，越小切得越细
 
+segmentation:
+  window_seconds: 600                   # 字幕语义切分分窗大小（秒）
+  overlap_seconds: 60                   # 相邻窗重叠（秒）
+  threshold: 0.35                       # 相邻窗关键词相似度阈值，越低切得越细
+  min_topic_seconds: 120                # 话题段最短时长（秒），过短并入相邻
+  max_topics: 50                        # 话题段最多输出条数
+
 scoring:
   weights:
     danmaku_heat: 0.25                  # 弹幕热度权重

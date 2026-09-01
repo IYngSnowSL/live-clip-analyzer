@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 from pathlib import Path
 
 from .ai_client import AIError
@@ -14,49 +13,33 @@ VISION_PROMPT = (
 )
 
 
-def image_to_data_url(path: str | Path) -> str:
-    data = Path(path).read_bytes()
-    b64 = base64.b64encode(data).decode("ascii")
-    return f"data:image/jpeg;base64,{b64}"
-
-
 async def describe_scenes(client, scenes: list[dict],
                           frames_by_scene: dict[int, list[str]],
                           max_frames_per_scene: int = 2) -> list[dict]:
-    """为每个场景生成 visual_summary 字段。单个场景失败不会中断全片分析。"""
+    """为每个场景生成 visual_summary 字段。单个场景失败不会中断全片分析。
+
+    画面解析统一走 AI 门面的 describe_images 能力接口。
+    """
     sem = asyncio.Semaphore(max(1, int(client.concurrency)))
     failures = 0
 
     async def one(scene: dict) -> dict:
         nonlocal failures
-        files = list(frames_by_scene.get(scene["scene_index"], []))[:max_frames_per_scene]
-        content: list[dict] = [{"type": "text", "text": VISION_PROMPT}]
-        for fp in files:
-            if Path(fp).exists():
-                url = await asyncio.to_thread(image_to_data_url, fp)
-                content.append({"type": "image_url", "image_url": {"url": url}})
-        if len(content) == 1:
+        files = [
+            fp for fp in list(frames_by_scene.get(scene["scene_index"], []))[:max_frames_per_scene]
+            if Path(fp).exists()
+        ]
+        if not files:
             scene["visual_summary"] = ""
             return scene
-        messages = [{"role": "user", "content": content}]
         async with sem:
             try:
-                text = await client.chat(messages, model=client.vision_model,
-                                         json_mode=False, max_tokens=500)
-            except AIError:
-                # 部分兼容接口不支持单条消息多图，退回只用第一帧
-                try:
-                    if len(content) > 2:
-                        messages = [{"role": "user", "content": content[:2]}]
-                        text = await client.chat(messages, model=client.vision_model,
-                                                 json_mode=False, max_tokens=500)
-                    else:
-                        raise
-                except AIError as exc:
-                    failures += 1
-                    print(f"[vision] scene {scene['scene_index']} 失败: {exc}")
-                    scene["visual_summary"] = ""
-                    return scene
+                text = await client.describe_images(files, VISION_PROMPT)
+            except AIError as exc:
+                failures += 1
+                print(f"[vision] scene {scene['scene_index']} 失败: {exc}")
+                scene["visual_summary"] = ""
+                return scene
         scene["visual_summary"] = (text or "").strip()
         return scene
 

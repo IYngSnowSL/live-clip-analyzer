@@ -38,6 +38,12 @@ async def get_candidates(task_id: str):
     return models.get_candidates(task_id)
 
 
+@router.get("/{task_id}/topics")
+async def get_topics(task_id: str):
+    _get_task_or_404(task_id)
+    return models.get_topics(task_id)
+
+
 class ReviewPayload(BaseModel):
     start: float | None = None
     end: float | None = None

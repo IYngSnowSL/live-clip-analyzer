@@ -1,7 +1,16 @@
-"""OpenAI 兼容 API 客户端：chat / chat_json / ASR 转写。"""
+"""OpenAI 兼容 API 客户端：统一 AI 能力门面。
+
+对外提供三类语义化能力接口：
+- analyze_document：文档 / 字幕分析（LLM）
+- describe_images：视频 / 画面解析（视觉模型）
+- transcribe：语音转写（ASR 模型）
+
+上层模块（字幕切分、画面理解、语音转写）统一走本门面，不再各自拼装 HTTP。
+"""
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import re
 from pathlib import Path
@@ -14,6 +23,13 @@ class AIError(Exception):
     def __init__(self, message: str, status_code: int | None = None):
         super().__init__(message)
         self.status_code = status_code
+
+
+def image_to_data_url(path: str | Path) -> str:
+    """把图片文件转成 base64 data URL，供视觉模型调用。"""
+    data = Path(path).read_bytes()
+    b64 = base64.b64encode(data).decode("ascii")
+    return f"data:image/jpeg;base64,{b64}"
 
 
 class AIClient:
@@ -84,9 +100,52 @@ class AIClient:
                                   max_tokens=max_tokens, json_mode=True)
         return extract_json(content)
 
-    async def transcribe_audio(self, file_path: str | Path, language: str | None = None,
-                               response_format: str | None = "verbose_json",
-                               retries: int = 3) -> dict:
+    # ---------------- 能力接口 ----------------
+
+    async def analyze_document(self, text: str, instruction: str,
+                               json_mode: bool = False, model: str | None = None,
+                               max_tokens: int = 1600) -> str | dict:
+        """文档 / 字幕分析：把 instruction + text 组合成 prompt 调 LLM。
+
+        用于字幕切分、字幕整理、话题摘要等"对一段文本做分析"的场景。
+        """
+        prompt = f"{instruction}\n\n【文档内容】\n{text}"
+        messages = [
+            {"role": "system", "content": "你是专业的文档分析助手，只根据给定内容作答。"},
+            {"role": "user", "content": prompt},
+        ]
+        if json_mode:
+            return await self.chat_json(messages, model=model, max_tokens=max_tokens)
+        return await self.chat(messages, model=model, max_tokens=max_tokens)
+
+    async def describe_images(self, image_paths: list[str | Path], prompt: str,
+                              max_tokens: int = 500) -> str:
+        """视频 / 画面解析：把图片转 base64 data URL，调视觉模型。
+
+        多图失败时自动退回单图（兼容不支持单消息多图的接口）。
+        """
+        content: list[dict] = [{"type": "text", "text": prompt}]
+        for fp in image_paths:
+            if Path(fp).exists():
+                url = await asyncio.to_thread(image_to_data_url, fp)
+                content.append({"type": "image_url", "image_url": {"url": url}})
+        if len(content) == 1:
+            return ""
+        messages = [{"role": "user", "content": content}]
+        try:
+            text = await self.chat(messages, model=self.vision_model, max_tokens=max_tokens)
+        except AIError:
+            if len(content) > 2:
+                messages = [{"role": "user", "content": content[:2]}]
+                text = await self.chat(messages, model=self.vision_model, max_tokens=max_tokens)
+            else:
+                raise
+        return text or ""
+
+    async def transcribe(self, file_path: str | Path, language: str | None = None,
+                         response_format: str | None = "verbose_json",
+                         retries: int = 3) -> dict:
+        """语音转写：上传音频文件，返回带时间戳的转写结果。"""
         data = {"model": self.asr_model}
         if response_format:
             data["response_format"] = response_format
@@ -108,7 +167,6 @@ class AIClient:
                 try:
                     return resp.json()
                 except ValueError:
-                    # 部分兼容接口会直接返回纯文本，包装为 dict 供上层解析
                     if resp.text.strip():
                         return {"text": resp.text.strip()}
                     raise AIError("ASR API 返回空响应", status_code=resp.status_code)

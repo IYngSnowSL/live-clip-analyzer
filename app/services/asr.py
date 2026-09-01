@@ -51,8 +51,8 @@ async def _transcribe_one(client, file_path: Path, duration: float, language: st
     result = None
     for fmt in ("verbose_json", "json", None):
         try:
-            result = await client.transcribe_audio(file_path, language=language,
-                                                   response_format=fmt)
+            result = await client.transcribe(file_path, language=language,
+                                             response_format=fmt)
             break
         except AIError as exc:
             if fmt is not None and exc.status_code in (400, 404, 422):

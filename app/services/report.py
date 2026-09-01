@@ -14,6 +14,8 @@ _LANG = {
         "scene_count": "时间轴片段数",
         "long_count": "长切片候选",
         "sentence_count": "单句素材候选",
+        "topic_count": "话题段",
+        "topics": "话题目录",
         "timeline": "详细时间轴",
         "long_candidates": "长切片候选",
         "sentence_candidates": "单句素材候选",
@@ -34,6 +36,8 @@ _LANG = {
         "scene_count": "Timeline segments",
         "long_count": "Long clip candidates",
         "sentence_count": "Quote candidates",
+        "topic_count": "Topics",
+        "topics": "Topic Index",
         "timeline": "Detailed Timeline",
         "long_candidates": "Long Clip Candidates",
         "sentence_candidates": "Quote Candidates",
@@ -106,7 +110,19 @@ def _candidate_to_md(c: dict, lang: str) -> str:
             f"   - {t['keywords']}：{kw_text}")
 
 
-def build_report_markdown(task: dict, scenes: list[dict], candidates: list[dict], lang: str) -> str:
+def _topic_to_md(tp: dict, lang: str) -> str:
+    title = tp.get("title_zh") if lang == "zh" else tp.get("title_en")
+    summary = tp.get("summary_zh") if lang == "zh" else tp.get("summary_en")
+    keywords = tp.get("keywords") or []
+    na = "（无）" if lang == "zh" else "N/A"
+    kw_text = "、".join(str(k) for k in keywords) if keywords else na
+    return (f"### [{format_ts(tp['start'])} - {format_ts(tp['end'])}] {title or ''}\n"
+            f"- {summary or na}\n"
+            f"- 关键词：{kw_text}")
+
+
+def build_report_markdown(task: dict, scenes: list[dict], candidates: list[dict],
+                          topics: list[dict], lang: str) -> str:
     """生成指定语言的 Markdown 报告文本。"""
     t = _LANG[lang]
     duration = sum(float(sc["end"]) - float(sc["start"]) for sc in scenes)
@@ -128,12 +144,22 @@ def build_report_markdown(task: dict, scenes: list[dict], candidates: list[dict]
         "",
         f"- {t['video_duration']}：{format_ts(duration)}",
         f"- {t['scene_count']}：{len(scenes)}",
+        f"- {t['topic_count']}：{len(topics)}",
         f"- {t['long_count']}：{len(long_cands)}",
         f"- {t['sentence_count']}：{len(sentence_cands)}",
         "",
-        f"## {t['timeline']}",
+        f"## {t['topics']}",
         "",
     ]
+    if topics:
+        for tp in topics:
+            lines.append(_topic_to_md(tp, lang))
+            lines.append("")
+    else:
+        lines.append(na)
+        lines.append("")
+
+    lines += [f"## {t['timeline']}", ""]
     for sc in scenes:
         lines.append(_scene_to_md(sc, lang))
         lines.append("")
@@ -160,7 +186,8 @@ def build_report_markdown(task: dict, scenes: list[dict], candidates: list[dict]
 
 
 def build_reports(task: dict, scenes: list[dict], candidates: list[dict],
-                  task_dir: str | Path, languages: list[str]) -> dict[str, str]:
+                  topics: list[dict], task_dir: str | Path,
+                  languages: list[str]) -> dict[str, str]:
     """生成报告文件，返回 {lang: 文件路径}。"""
     task_dir = Path(task_dir)
     task_dir.mkdir(parents=True, exist_ok=True)
@@ -168,17 +195,19 @@ def build_reports(task: dict, scenes: list[dict], candidates: list[dict],
     for lang in languages:
         if lang not in _LANG:
             continue
-        md = build_report_markdown(task, scenes, candidates, lang)
+        md = build_report_markdown(task, scenes, candidates, topics, lang)
         path = task_dir / f"report_{lang}.md"
         path.write_text(md, encoding="utf-8")
         paths[lang] = str(path)
     return paths
 
 
-def build_export_json(task: dict, scenes: list[dict], candidates: list[dict]) -> dict:
+def build_export_json(task: dict, scenes: list[dict], candidates: list[dict],
+                      topics: list[dict]) -> dict:
     """结构化 JSON 导出。"""
     return {
         "task": task,
         "scenes": scenes,
         "candidates": candidates,
+        "topics": topics,
     }

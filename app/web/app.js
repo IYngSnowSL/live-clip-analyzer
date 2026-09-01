@@ -3,6 +3,7 @@
 let currentTaskId = null;
 let currentScenes = [];
 let currentCandidates = [];
+let currentTopics = [];
 let timer = null;
 
 const $ = (id) => document.getElementById(id);
@@ -125,6 +126,25 @@ function renderScenes(scenes) {
   }).join("");
 }
 
+function renderTopics(topics) {
+  const box = $("topics-container");
+  if (!topics || !topics.length) {
+    box.innerHTML = `<div class="muted">暂无话题段（无音轨或未完成字幕切分）。</div>`;
+    return;
+  }
+  box.innerHTML = topics.map((tp) => {
+    const keywords = (tp.keywords || []).join("、") || "（无）";
+    return `
+      <div class="topic-item">
+        <div class="head">
+          <span class="title"><a class="time-link" target="_blank" href="/static/preview.html?task=${currentTaskId}&t=${tp.start}">[${formatTs(tp.start)} - ${formatTs(tp.end)}]</a> ${escapeHtml(tp.title_zh || "")}</span>
+        </div>
+        <div class="detail">${escapeHtml(tp.summary_zh || "（无）")}</div>
+        <div class="detail"><b>关键词：</b>${escapeHtml(keywords)}</div>
+      </div>`;
+  }).join("");
+}
+
 function renderCandidates(candidates) {
   const longBox = $("long-candidates");
   const sentenceBox = $("sentence-candidates");
@@ -190,8 +210,10 @@ async function refreshReportData() {
   if (!currentTaskId) return;
   currentScenes = await api(`/api/tasks/${currentTaskId}/scenes`);
   currentCandidates = await api(`/api/tasks/${currentTaskId}/candidates`);
+  currentTopics = await api(`/api/tasks/${currentTaskId}/topics`);
   renderScenes(currentScenes);
   renderCandidates(currentCandidates);
+  renderTopics(currentTopics);
 }
 
 function renderExportResults(files) {
