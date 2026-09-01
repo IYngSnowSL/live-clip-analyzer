@@ -24,11 +24,17 @@
         <form id="create-form">
           <div class="form-row">
             <label for="video_path">视频路径</label>
-            <input type="text" id="video_path" placeholder="D:\videos\live_001.flv" required />
+            <div class="path-row">
+              <input type="text" id="video_path" placeholder="D:\videos\live_001.flv" required />
+              <button type="button" class="btn ghost btn-browse" data-target="video_path" data-filter="video" title="浏览视频文件">📂</button>
+            </div>
           </div>
           <div class="form-row">
             <label for="danmaku_path">弹幕 XML 路径</label>
-            <input type="text" id="danmaku_path" placeholder="D:\videos\live_001.xml" />
+            <div class="path-row">
+              <input type="text" id="danmaku_path" placeholder="D:\videos\live_001.xml" />
+              <button type="button" class="btn ghost btn-browse" data-target="danmaku_path" data-filter="xml" title="浏览 XML 文件">📂</button>
+            </div>
           </div>
           <div class="form-row two-col">
             <div>
@@ -164,6 +170,18 @@
       <div class="modal-actions">
         <button id="btn-save-review">保存</button>
         <button id="btn-cancel-review" class="ghost">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="file-modal" class="modal hidden">
+    <div class="modal-content file-browser">
+      <h3 id="file-modal-title">选择文件</h3>
+      <div class="fb-path" id="fb-path">加载中…</div>
+      <div class="fb-list" id="fb-list"></div>
+      <div class="modal-actions">
+        <button id="btn-fb-up" class="ghost">↑ 上一级</button>
+        <button id="btn-fb-cancel" class="ghost">取消</button>
       </div>
     </div>
   </div>

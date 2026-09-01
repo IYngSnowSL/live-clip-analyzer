@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .api.export import router as export_router
+from .api.files import router as files_router
 from .api.report import router as report_router
 from .api.tasks import router as tasks_router
 from .config import PROJECT_ROOT, load_config
@@ -33,6 +34,7 @@ app = FastAPI(title="直播切片分析工具", version=__version__)
 app.include_router(tasks_router)
 app.include_router(report_router)
 app.include_router(export_router)
+app.include_router(files_router)
 
 WEB_DIR = PROJECT_ROOT / "app" / "web"
 app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")

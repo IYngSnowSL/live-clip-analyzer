@@ -275,10 +275,103 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+function escapeAttr(text) {
+  return escapeHtml(text).replace(/"/g, "&quot;");
+}
+
+/* ---------------- 文件浏览器 ---------------- */
+let fbPath = "";
+let fbParent = "";
+let fbTarget = null;
+let fbFilter = "all";
+
+function openFileBrowser(targetId, filter) {
+  fbTarget = targetId;
+  fbFilter = filter || "all";
+  const titles = { video: "选择视频文件", xml: "选择弹幕 XML 文件", all: "选择文件" };
+  $("file-modal-title").textContent = titles[fbFilter] || "选择文件";
+  $("file-modal").classList.remove("hidden");
+  const cur = ($(targetId).value || "").trim();
+  loadFileList(cur ? dirOf(cur) : "");
+}
+
+function dirOf(path) {
+  const p = path.replace(/[\\/]+$/, "");
+  const i = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"));
+  return i > 0 ? p.slice(0, i) : p;
+}
+
+async function loadFileList(path) {
+  const url = path
+    ? `/api/files/ls?path=${encodeURIComponent(path)}&filter=${fbFilter}`
+    : "/api/files/drives";
+  try {
+    const data = await api(url);
+    fbPath = data.path || "";
+    fbParent = data.parent || "";
+    renderFileList(data);
+  } catch (err) {
+    if (path) {
+      // 当前路径无效（输入框里可能是文件路径或不存在），回退到磁盘根
+      loadFileList("");
+    } else {
+      $("fb-list").innerHTML = `<div class="muted">加载失败：${escapeHtml(err.message)}</div>`;
+    }
+  }
+}
+
+function renderFileList(data) {
+  $("fb-path").textContent = fbPath || "我的电脑";
+  $("btn-fb-up").disabled = !fbParent;
+  const parts = [];
+  (data.dirs || []).forEach((d) => {
+    parts.push(`<div class="fb-item fb-dir" data-path="${escapeAttr(d.path)}"><span class="fb-icon">📁</span><span class="fb-name">${escapeHtml(d.name)}</span></div>`);
+  });
+  (data.files || []).forEach((f) => {
+    parts.push(`<div class="fb-item fb-file" data-path="${escapeAttr(f.path)}"><span class="fb-icon">📄</span><span class="fb-name">${escapeHtml(f.name)}</span><span class="fb-size">${formatSize(f.size)}</span></div>`);
+  });
+  if (!parts.length) {
+    $("fb-list").innerHTML = `<div class="muted">（空目录，或没有匹配类型的文件）</div>`;
+    return;
+  }
+  $("fb-list").innerHTML = parts.join("");
+  document.querySelectorAll(".fb-item").forEach((el) => {
+    el.addEventListener("click", () => {
+      const p = el.dataset.path;
+      if (el.classList.contains("fb-dir")) {
+        loadFileList(p);
+      } else {
+        $(fbTarget).value = p;
+        $("file-modal").classList.add("hidden");
+      }
+    });
+  });
+}
+
+function formatSize(bytes) {
+  if (!bytes && bytes !== 0) return "";
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + " MB";
+  return (bytes / 1073741824).toFixed(2) + " GB";
+}
+
+function fileListUp() {
+  if (fbParent) loadFileList(fbParent);
+}
+
 async function init() {
     $("sidebar-toggle").addEventListener("click", () => {
       document.body.classList.toggle("sidebar-open");
     });
+  document.querySelectorAll(".btn-browse").forEach((btn) => {
+    btn.addEventListener("click", () => openFileBrowser(btn.dataset.target, btn.dataset.filter));
+  });
+  $("btn-fb-up").addEventListener("click", fileListUp);
+  $("btn-fb-cancel").addEventListener("click", () => $("file-modal").classList.add("hidden"));
+  $("file-modal").addEventListener("click", (e) => {
+    if (e.target === $("file-modal")) $("file-modal").classList.add("hidden");
+  });
   $("create-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const payload = {
