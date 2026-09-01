@@ -155,7 +155,8 @@ def save_candidates(task_id: str, candidates: list[dict[str, Any]]) -> None:
         for c in candidates:
             values = []
             for f in CANDIDATE_FIELDS:
-                val = c.get(f)
+                # task_id 由函数参数注入，候选 dict 不携带容器字段
+                val = task_id if f == "task_id" else c.get(f)
                 if isinstance(val, (list, dict)):
                     val = json.dumps(val, ensure_ascii=False)
                 values.append(val)

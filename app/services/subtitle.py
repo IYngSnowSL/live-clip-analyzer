@@ -28,11 +28,15 @@ def chunk_by_window(asr_segments: list[dict], window_seconds: int = 600,
         window_seconds = 600
     if overlap_seconds >= window_seconds:
         overlap_seconds = 0
+    step = window_seconds - overlap_seconds
+    # 步长保护：至少为窗口的 1/5，避免 overlap 过大导致窗数爆炸
+    if step < window_seconds / 5:
+        step = window_seconds / 5
 
     chunks: list[dict] = []
     cursor = total_start
     while cursor < total_end:
-        win_end = cursor + window_seconds
+        win_end = min(cursor + window_seconds, total_end)
         segs = [
             s for s in asr_segments
             if float(s["start"]) < win_end and float(s["end"]) >= cursor
@@ -41,5 +45,5 @@ def chunk_by_window(asr_segments: list[dict], window_seconds: int = 600,
             text = " ".join((s.get("text") or "").strip() for s in segs).strip()
             if text:
                 chunks.append({"start": round(cursor, 2), "end": round(win_end, 2), "text": text})
-        cursor += window_seconds - overlap_seconds
+        cursor += step
     return chunks

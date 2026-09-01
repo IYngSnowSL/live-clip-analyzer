@@ -8,6 +8,15 @@ def score_scenes(scenes: list[dict], weights) -> list[dict]:
     w_emotion = float(weights.danmaku_emotion)
     w_fun = float(weights.fun)
     w_highlight = float(weights.highlight)
+
+    # 全片无弹幕时，弹幕权重按比例转给有趣度与高光潜力，避免分数天花板过低
+    # （否则最高只能拿到 fun+highlight 权重之和的分，永远达不到候选阈值）
+    if scenes and sum(int(s.get("danmaku_count") or 0) for s in scenes) == 0:
+        w_fun += w_heat / 2 + w_emotion / 2
+        w_highlight += w_heat / 2 + w_emotion / 2
+        w_heat = 0.0
+        w_emotion = 0.0
+
     total_weight = w_heat + w_emotion + w_fun + w_highlight
     if total_weight <= 0:
         total_weight = 1.0

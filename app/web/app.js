@@ -74,6 +74,20 @@ function renderTasks(tasks) {
               $("empty-state").classList.remove("hidden");
             }
         } catch (err) {
+          if (String(err.message).includes("正在运行") && confirm("任务正在运行，是否强制删除？")) {
+            try {
+              await api(`/api/tasks/${btn.dataset.id}?force=true`, { method: "DELETE" });
+              await loadTasks();
+              if (currentTaskId === btn.dataset.id) {
+                currentTaskId = null;
+                $("report-card").classList.add("hidden");
+                $("empty-state").classList.remove("hidden");
+              }
+            } catch (err2) {
+              alert("强制删除失败：" + err2.message);
+            }
+            return;
+          }
           alert("删除失败：" + err.message);
         }
       });
