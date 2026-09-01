@@ -322,7 +322,7 @@ async function loadFileList(path) {
 
 function renderFileList(data) {
   $("fb-path").textContent = fbPath || "我的电脑";
-  $("btn-fb-up").disabled = !fbParent;
+  $("btn-fb-up").disabled = !fbPath; // 只要进入了某个目录（有 path）即可回退
   const parts = [];
   (data.dirs || []).forEach((d) => {
     parts.push(`<div class="fb-item fb-dir" data-path="${escapeAttr(d.path)}"><span class="fb-icon">📁</span><span class="fb-name">${escapeHtml(d.name)}</span></div>`);
@@ -357,7 +357,8 @@ function formatSize(bytes) {
 }
 
 function fileListUp() {
-  if (fbParent) loadFileList(fbParent);
+  if (!fbPath) return;             // 已在盘符列表，无法再回退
+  loadFileList(fbParent || "");    // 盘符根时 fbParent 为空，回到盘符列表
 }
 
 async function init() {
