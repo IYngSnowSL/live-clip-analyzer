@@ -7,6 +7,10 @@
   （后端新增 `GET /api/files/ls`、`GET /api/files/drives`，视频 / XML 按扩展名过滤）
 - 新增「设置」页：在 WebUI 中配置 AI 接口与常用参数（写入 config.local.yaml，密钥脱敏显示，
   保存后下一个任务生效；后端新增 `GET/PUT /api/config`）
+- **字幕驱动切分（主功能第一步）**：新增字幕语义切分，从 ASR 转写全文切出「话题段」
+  （纯 Python 预筛 + LLM 命名），新增 `topic_segments` 表、`GET /api/tasks/{id}/topics`、
+  Markdown 报告「话题目录」章节；ASR 结果缓存复用；AI 调用整理为统一门面
+  （`analyze_document` / `describe_images` / `transcribe`）
 
 ### 配置安全
 - 配置改为四级优先级：默认值 < `config.yaml` < `config.local.yaml` < `LCA_*` 环境变量
