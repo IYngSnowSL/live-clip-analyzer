@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.2.1 — 配置安全与健壮性
+
+### 配置安全
+- 配置改为四级优先级：默认值 < `config.yaml` < `config.local.yaml` < `LCA_*` 环境变量
+- 新增 `config.local.yaml` 覆盖机制（git 忽略，放真实 key）
+- 支持 `LCA_BASE_URL` / `LCA_API_KEY` / `LCA_VISION_MODEL` / `LCA_LLM_MODEL` / `LCA_ASR_MODEL`
+
+### 修复
+- LLM 时间轴分析不再输出冗余 `rank` 字段（rank 统一由评分计算）
+- `refine_scenes` 合并判断清理死代码，行为不变
+- 服务重启后遗留的 running/pending 任务自动标记 failed，不再产生僵尸任务
+- 删除任务接口支持 `?force=true` 强制删除
+- 导出结果列表刷新后保留标题（新增 `exports_meta.json` 持久化）
+- 同名片段重复导出时自动追加时间戳，避免覆盖旧文件
+- 单句素材候选的双语报告统一显示原话引用
+
+### 优化
+- 源视频已是浏览器可播的 MP4（H.264 + AAC/MP3/无音轨）时跳过转封装
+- 清理未使用的 `python-multipart` 依赖
+
+### 仓库卫生
+- 移除一次性个人脚本 `setup_github_private.bat` / `push_to_github.bat` / `git_diag.bat`
+- 修复 `.gitignore` 中文注释乱码
+
+### 文档
+- 新增 `CONTEXT.md` 领域术语表
+- 新增 `docs/adr/` 架构决策记录（切片导出策略、配置密钥优先级）
+- 新增 `docs/features/subtitle-first-segmentation.md`：字幕驱动切分新功能设计讨论
+- README 重写：配置说明、目录结构、文档索引
+
 ## v0.2.0 — DeepSeek UI Release
 
 ### Web UI
