@@ -8,7 +8,7 @@ venv/
 # 项目数据与产物
 data/
 
-# 本地配置（放真实 key）
+# 本地配置（放真实 key，不提交）
 config.local.yaml
 .env
 
