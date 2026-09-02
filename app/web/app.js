@@ -333,11 +333,18 @@ function startPolling(taskId) {
 
 let reaxleTaskId = null;
 
-function openReaxle(taskId) {
+async function openReaxle(taskId) {
   reaxleTaskId = taskId || currentTaskId;
   if (!reaxleTaskId) return;
-  $("reaxle-min").value = 30;
-  $("reaxle-max").value = 3600;
+  // 预填当前生效的打轴参数（设置页保存的新配置自动生效）
+  try {
+    const cfg = await api("/api/config");
+    $("reaxle-min").value = cfg.target_min_seconds ?? 30;
+    $("reaxle-max").value = cfg.target_max_seconds ?? 3600;
+  } catch (e) {
+    $("reaxle-min").value = 30;
+    $("reaxle-max").value = 3600;
+  }
   $("reaxle-fine").checked = false;
   $("reaxle-modal").classList.remove("hidden");
 }
@@ -640,6 +647,9 @@ async function loadConfig() {
   $("cfg-vision-api-key").value = cfg.vision_api_key || "";
   $("cfg-asr-base-url").value = cfg.asr_base_url || "";
   $("cfg-asr-api-key").value = cfg.asr_api_key || "";
+  $("cfg-asr-engine").value = cfg.asr_engine || "local";
+  $("cfg-local-model-path").value = cfg.local_model_path || "";
+  $("cfg-subtitle-max-chars").value = cfg.subtitle_max_chars ?? 30;
   $("cfg-target-min").value = cfg.target_min_seconds ?? 30;
   $("cfg-target-max").value = cfg.target_max_seconds ?? 3600;
   $("cfg-export-accurate").checked = !!cfg.export_accurate;
@@ -666,6 +676,9 @@ async function saveConfig() {
     vision_api_key: $("cfg-vision-api-key").value.trim(),
     asr_base_url: $("cfg-asr-base-url").value.trim(),
     asr_api_key: $("cfg-asr-api-key").value.trim(),
+    asr_engine: $("cfg-asr-engine").value,
+    local_model_path: $("cfg-local-model-path").value.trim(),
+    subtitle_max_chars: Number($("cfg-subtitle-max-chars").value) || 30,
     target_min_seconds: Number($("cfg-target-min").value) || 30,
     target_max_seconds: Number($("cfg-target-max").value) || 3600,
     export_accurate: $("cfg-export-accurate").checked,

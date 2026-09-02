@@ -1,6 +1,23 @@
 # Changelog
 
-## v0.4.2 — 复制 / 弹幕高峰 / 字幕搜索
+## v0.4.5 — 本地 Faster-Whisper 转录（继承卡卡字幕助手）+ 重新打轴读新配置
+
+- **本地 ASR 引擎**（`app/services/local_asr.py`）：faster-whisper + 内置 Silero VAD
+  （`vad_filter`），复用卡卡字幕助手已下载的 large-v2 模型（默认路径
+  `D:\AdobE\VideoCaptioner\AppData\models\faster-whisper-large-v2`），零 API 费用
+- **语言处理**：逐音频块自动检测，仅在中文/日文间二选一（Vtuber 中日混播友好）
+- **卡卡式字幕精细化**：词级时间戳 + 中日标点断句 + 每行 ≤30 字符（可配
+  `asr.subtitle_max_chars`），提前断句保证不超宽；无词级时间戳时按字符比例插值兜底
+- **引擎可切换**：设置页选择「本地 faster-whisper（默认）」/「云端 API」，
+  云端路径保留（硅基流动 SenseVoiceSmall）
+- **重新打轴自动使用新配置**：面板打开时读当前生效的打轴参数（设置页保存即生效），
+  不再硬编码 30/3600
+- 修复 Anaconda OpenMP 冲突（`KMP_DUPLICATE_LIB_OK`，ctranslate2 与 numpy 重复加载
+  libiomp5md.dll 导致进程崩溃）
+- 实测（用户真实直播 60 秒音频）：CPU int8 转写 34 秒（约 1.8 倍实时），
+  12 句精细化字幕全部 ≤30 字符，时间戳 1~6 秒级
+
+## v0.4.4 — 五项 UI 优化
 
 - **A. 一键复制剪辑标记**：单轴「复制」按钮（`HH:MM:SS - HH:MM:SS 标题`）；
   顶部「📋 复制全部」一键复制全部轴清单（**制表符分隔 TSV**，可直接粘贴进 Excel / 共享表格）

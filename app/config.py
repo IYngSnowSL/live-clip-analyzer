@@ -43,7 +43,15 @@ DEFAULTS: dict[str, Any] = {
             "asr": {"base_url": "", "api_key": ""},
         },
     },
-    "asr": {"chunk_seconds": 1200, "language": ""},
+    "asr": {
+        "chunk_seconds": 1200,       # 音频切片长度（秒），长音频会自动分段
+        "language": "",              # 云端 ASR 语言代码；留空为自动识别
+        "engine": "local",           # local=本地 faster-whisper（默认）/ api=云端 OpenAI 兼容 ASR
+        "local_model_path": r"D:\AdobE\VideoCaptioner\AppData\models\faster-whisper-large-v2",
+        "local_device": "cpu",       # cpu / cuda
+        "local_compute_type": "int8",  # int8 / float16 / float32
+        "subtitle_max_chars": 30,    # 字幕每行最大字符数（卡卡式精细化断句）
+    },
     "axle": {
         "window_seconds": 600,        # LLM 找内容点的分窗大小（秒）
         "overlap_seconds": 60,        # 相邻窗重叠（秒），避免漏掉跨窗内容点

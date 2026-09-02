@@ -80,9 +80,15 @@ async def run_task(task_id: str) -> None:
                 asr_segments = None
         if not asr_segments:
             update_task(task_id, progress=30, message="ASR 语音转写中…")
-            asr_segments = await transcribe_chunks(ai_client, chunks_dir,
-                                                   int(cfg.asr.chunk_seconds),
-                                                   str(cfg.asr.language or ""))
+            engine = str(getattr(cfg.asr, "engine", "local") or "local")
+            if engine == "api":
+                from ..services.asr import transcribe_chunks
+                asr_segments = await transcribe_chunks(ai_client, chunks_dir,
+                                                       int(cfg.asr.chunk_seconds),
+                                                       str(cfg.asr.language or ""))
+            else:
+                from ..services.local_asr import transcribe_chunks_local
+                asr_segments = await transcribe_chunks_local(chunks_dir, cfg)
             asr_path.write_text(
                 json.dumps(asr_segments, ensure_ascii=False, indent=2), encoding="utf-8")
             update_task(task_id, progress=50, message=f"ASR 完成，共 {len(asr_segments)} 句")

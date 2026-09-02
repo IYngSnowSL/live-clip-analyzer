@@ -295,7 +295,26 @@
           </div>
 
           <div class="cfg-model-group">
-            <div class="cfg-model-title">🎙️ ASR 转写模型（语音转写）</div>
+            <div class="cfg-model-title">🎙️ ASR 转写引擎</div>
+            <div class="form-row">
+              <label for="cfg-asr-engine">引擎选择</label>
+              <select id="cfg-asr-engine">
+                <option value="local">本地 faster-whisper（默认，免费，CPU 较慢）</option>
+                <option value="api">云端 OpenAI 兼容 API（快，按量计费）</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label for="cfg-local-model-path">本地模型路径（whisper-large-v2）</label>
+              <input type="text" id="cfg-local-model-path" placeholder="D:\AdobE\VideoCaptioner\AppData\models\faster-whisper-large-v2" autocomplete="off" />
+            </div>
+            <div class="form-row">
+              <label for="cfg-subtitle-max-chars">字幕每行最大字符数（卡卡式精细断句）</label>
+              <input type="number" id="cfg-subtitle-max-chars" min="10" max="80" step="5" />
+            </div>
+          </div>
+
+          <div class="cfg-model-group">
+            <div class="cfg-model-title">🎙️ ASR 转写模型（云端引擎时使用）</div>
             <div class="form-row">
               <label for="cfg-asr-model">模型名</label>
               <div class="model-row">

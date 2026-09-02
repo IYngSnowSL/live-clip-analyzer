@@ -32,6 +32,9 @@ _FIELD_MAP: dict[str, str] = {
     "vision_api_key": "ai.endpoints.vision.api_key",
     "asr_base_url": "ai.endpoints.asr.base_url",
     "asr_api_key": "ai.endpoints.asr.api_key",
+    "asr_engine": "asr.engine",
+    "local_model_path": "asr.local_model_path",
+    "subtitle_max_chars": "asr.subtitle_max_chars",
     "target_min_seconds": "axle.target_min_seconds",
     "target_max_seconds": "axle.target_max_seconds",
     "export_accurate": "export.accurate",
@@ -102,6 +105,9 @@ class ConfigUpdate(BaseModel):
     vision_api_key: str | None = None
     asr_base_url: str | None = None
     asr_api_key: str | None = None
+    asr_engine: str | None = None
+    local_model_path: str | None = None
+    subtitle_max_chars: float | None = None
     target_min_seconds: float | None = None
     target_max_seconds: float | None = None
     export_accurate: bool | None = None

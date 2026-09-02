@@ -1,0 +1,156 @@
+"""本地 Faster-Whisper 转录 + 卡卡字幕助手式精细化。
+
+设计（用户拍板 2026-09-03）：
+- 引擎：faster-whisper（复用 VideoCaptioner 已下载的 large-v2 模型）
+- VAD：faster-whisper 内置 Silero VAD（vad_filter=True）
+- 语言：逐音频块自动检测，仅在中文/日文间二选一（Vtuber 中日混播）
+- 精细化：继承卡卡字幕助手——按中日标点断句，每行 ≤30 字符（可配），
+  词级时间戳精确切分，"一句话对应精细的一个轴"
+"""
+from __future__ import annotations
+
+import asyncio
+import os
+import re
+from pathlib import Path
+
+# Anaconda 环境：ctranslate2 与 numpy/onnxruntime 的 OpenMP 冲突（libiomp5md.dll 重复加载），
+# 官方 workaround（KMP_DUPLICATE_LIB_OK）——必须在任何相关库导入前设置
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
+from .ffmpeg_utils import ffprobe_duration
+
+# 句尾断句标点（中日混合）
+_PUNCT_END = "，。！？、…；：,.!?;:…～~"
+
+_model_cache: dict = {}
+
+
+def _get_model(cfg):
+    """加载（并缓存）faster-whisper 模型——3GB 模型只加载一次。"""
+    model_path = str(getattr(cfg.asr, "local_model_path", "") or "")
+    if not model_path or not Path(model_path).exists():
+        raise FileNotFoundError(f"本地 whisper 模型路径不存在: {model_path}")
+    if model_path not in _model_cache:
+        from faster_whisper import WhisperModel
+        device = str(getattr(cfg.asr, "local_device", "cpu") or "cpu")
+        compute = str(getattr(cfg.asr, "local_compute_type", "int8") or "int8")
+        _model_cache[model_path] = WhisperModel(
+            model_path, device=device, compute_type=compute)
+    return _model_cache[model_path]
+
+
+def _run_transcribe(model, audio_path: str, language: str | None):
+    """同步转录（调用方用 asyncio.to_thread 包裹）。"""
+    return model.transcribe(
+        audio_path,
+        language=language,          # None = whisper 自动检测（每块独立检测 → 中日二选一）
+        beam_size=5,
+        vad_filter=True,            # 内置 Silero VAD
+        vad_parameters={"min_silence_duration_ms": 500},
+        word_timestamps=True,       # 词级时间戳 → 精细切轴
+    )
+
+
+def _split_by_words(words, max_chars: int) -> list[dict]:
+    """按词级时间戳断句：标点结尾即断；接近宽度上限时提前断，保证不超宽。"""
+    subs: list[dict] = []
+    buf: list = []
+    buf_len = 0
+    for w in words:
+        word = (w.word or "").strip()
+        if not word:
+            continue
+        # 宽度限制：提前断句（除非 buf 为空，即单个词本身就超宽）
+        if buf and buf_len + len(word) > max_chars:
+            subs.append(_pack_words(buf))
+            buf = []
+            buf_len = 0
+        buf.append(w)
+        buf_len += len(word)
+        if buf_len >= max_chars or (word and word[-1] in _PUNCT_END):
+            subs.append(_pack_words(buf))
+            buf = []
+            buf_len = 0
+    if buf:
+        subs.append(_pack_words(buf))
+    return subs
+
+
+def _pack_words(words) -> dict:
+    text = "".join((w.word or "").strip() for w in words)
+    return {
+        "start": round(float(words[0].start), 2),
+        "end": round(float(words[-1].end), 2),
+        "text": text,
+    }
+
+
+def _split_by_ratio(start: float, end: float, text: str, max_chars: int) -> list[dict]:
+    """无词级时间戳的兜底：按字符比例分配时间。"""
+    text = (text or "").strip()
+    if not text:
+        return []
+    total = len(text)
+    if total <= max_chars:
+        return [{"start": round(start, 2), "end": round(end, 2), "text": text}]
+    dur = end - start
+    out = []
+    for i in range(0, total, max_chars):
+        chunk = text[i:i + max_chars]
+        s = start + dur * i / total
+        e = start + dur * (i + len(chunk)) / total
+        out.append({"start": round(s, 2), "end": round(e, 2), "text": chunk})
+    return out
+
+
+def refine_segments(segments, max_chars: int = 30) -> list[dict]:
+    """卡卡式精细化：长句按标点/宽度断成短句，每句一个精细的时间轴。"""
+    out: list[dict] = []
+    for seg in segments:
+        words = getattr(seg, "words", None)
+        if words:
+            out.extend(_split_by_words(words, max_chars))
+        else:
+            out.extend(_split_by_ratio(float(seg.start), float(seg.end), seg.text, max_chars))
+    return out
+
+
+async def transcribe_chunks_local(chunks_dir: str | Path, cfg) -> list[dict]:
+    """本地转录音频块目录（逐块自动检测语言 zh/ja），返回精细化 segments。"""
+    chunks_dir = Path(chunks_dir)
+    files = sorted(chunks_dir.glob("chunk_*.mp3")) or sorted(chunks_dir.glob("*.mp3"))
+    if not files:
+        raise FileNotFoundError(f"未找到音频块: {chunks_dir}")
+
+    model = await asyncio.to_thread(_get_model, cfg)
+    max_chars = int(getattr(cfg.asr, "subtitle_max_chars", 30) or 30)
+    all_segments: list[dict] = []
+    offset = 0.0
+
+    for fp in files:
+        duration = float(getattr(cfg.asr, "chunk_seconds", 1200))
+        try:
+            probed = await ffprobe_duration(fp)
+            if probed > 0:
+                duration = probed
+        except Exception:
+            pass
+
+        # 第一次：自动检测语言；非中/日则强制中文重转（中日二选一）
+        segments, info = await asyncio.to_thread(_run_transcribe, model, str(fp), None)
+        if (getattr(info, "language", "") or "") not in ("zh", "ja"):
+            segments, info = await asyncio.to_thread(_run_transcribe, model, str(fp), "zh")
+        refined = refine_segments(segments, max_chars)
+        for s in refined:
+            all_segments.append({
+                "start": round(offset + s["start"], 2),
+                "end": round(offset + s["end"], 2),
+                "text": s["text"],
+            })
+        offset += duration
+        print(f"[local-asr] {fp.name} 完成: 语言={info.language}，精细化后 {len(refined)} 句")
+
+    if not all_segments:
+        raise RuntimeError("本地转录结果为空，请检查模型与音频")
+    return all_segments
