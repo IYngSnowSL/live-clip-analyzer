@@ -1,6 +1,15 @@
 # ============================================================
 # 直播切片分析工具配置（自动打轴）
 # 所有路径均可使用相对路径（相对项目根目录）或绝对路径
+#
+# ★ API 推荐（2026-09-02，注意时效）：
+#   首选「硅基流动 SiliconFlow」：一个 key 通吃文本/视觉/ASR，OpenAI 兼容、国内直连、价格低
+#     base_url: https://api.siliconflow.cn/v1
+#     文本: Qwen/Qwen2.5-72B-Instruct（或 deepseek-ai/DeepSeek-V3）
+#     视觉: Qwen/Qwen2.5-VL-72B-Instruct
+#     ASR:  FunAudioLLM/SenseVoiceSmall
+#   备选：文本用 DeepSeek（https://api.deepseek.com/v1，中文强、便宜），
+#         ASR 在高级设置里单独配硅基流动。
 # ============================================================
 
 server:
@@ -11,13 +20,18 @@ data:
   data_dir: ./data          # 任务产物保存目录
 
 ai:
-  base_url: https://api.openai.com/v1   # OpenAI 兼容接口
+  base_url: https://api.openai.com/v1   # OpenAI 兼容接口（默认）
   api_key: sk-xxxx                     # 你的 API Key
   vision_model: gpt-4o                 # 视觉模型名（预留，打轴暂未使用）
   llm_model: gpt-4o-mini               # 文本模型名（找内容点/打轴）
   asr_model: whisper-1                 # ASR 模型名（语音转写）
   timeout: 180                          # 单次请求超时（秒）
   concurrency: 4                        # 并发调用上限
+  # 高级设置：每个模型能力可单独指定接口地址与密钥（空值 = 继承上面的全局配置）
+  endpoints:
+    llm: {base_url: "", api_key: ""}
+    vision: {base_url: "", api_key: ""}
+    asr: {base_url: "", api_key: ""}
 
 asr:
   chunk_seconds: 1200                   # 音频切片长度（秒），长音频会自动分段
@@ -26,9 +40,9 @@ asr:
 axle:
   window_seconds: 600                   # LLM 找内容点的分窗大小（秒）
   overlap_seconds: 60                   # 相邻窗重叠（秒），避免漏掉跨窗内容点
-  target_min_seconds: 60                # 目标最短时长（秒）= 1 分钟
-  target_max_seconds: 180               # 目标最长时长（秒）= 3 分钟
-  hard_max_seconds: 600                 # 硬上限（秒）= 10 分钟，超过自动拆分
+  target_min_seconds: 30                # 目标最短时长（秒）= 30 秒
+  target_max_seconds: 3600              # 目标最长时长（秒）= 1 小时
+  hard_max_seconds: 3600                # 硬上限（秒）= 1 小时，超过自动拆分
   merge_gap_seconds: 30                 # 相邻内容点合并间隔（秒）
   max_axles: 100                        # 最多输出轴数
   silence_threshold_db: -35             # 静音检测阈值（dB）

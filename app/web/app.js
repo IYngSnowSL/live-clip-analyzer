@@ -360,17 +360,18 @@ async function loadConfig() {
   $("cfg-vision-model").value = cfg.vision_model || "";
   $("cfg-llm-model").value = cfg.llm_model || "";
   $("cfg-asr-model").value = cfg.asr_model || "";
-  $("cfg-target-min").value = cfg.target_min_seconds ?? 60;
-  $("cfg-target-max").value = cfg.target_max_seconds ?? 180;
+  $("cfg-llm-base-url").value = cfg.llm_base_url || "";
+  $("cfg-llm-api-key").value = cfg.llm_api_key || "";
+  $("cfg-vision-base-url").value = cfg.vision_base_url || "";
+  $("cfg-vision-api-key").value = cfg.vision_api_key || "";
+  $("cfg-asr-base-url").value = cfg.asr_base_url || "";
+  $("cfg-asr-api-key").value = cfg.asr_api_key || "";
+  $("cfg-target-min").value = cfg.target_min_seconds ?? 30;
+  $("cfg-target-max").value = cfg.target_max_seconds ?? 3600;
   $("cfg-export-accurate").checked = !!cfg.export_accurate;
   $("cfg-key-hint").textContent = cfg.has_api_key
     ? "已配置（显示为掩码，保留掩码则不变更）"
     : "尚未配置 API Key，请填入你的密钥";
-}
-
-function openConfig() {
-  $("config-modal").classList.remove("hidden");
-  loadConfig().catch((e) => alert("加载配置失败：" + e.message));
 }
 
 async function saveConfig() {
@@ -380,12 +381,22 @@ async function saveConfig() {
     vision_model: $("cfg-vision-model").value.trim(),
     llm_model: $("cfg-llm-model").value.trim(),
     asr_model: $("cfg-asr-model").value.trim(),
-    target_min_seconds: Number($("cfg-target-min").value) || 60,
-    target_max_seconds: Number($("cfg-target-max").value) || 180,
+    llm_base_url: $("cfg-llm-base-url").value.trim(),
+    llm_api_key: $("cfg-llm-api-key").value.trim(),
+    vision_base_url: $("cfg-vision-base-url").value.trim(),
+    vision_api_key: $("cfg-vision-api-key").value.trim(),
+    asr_base_url: $("cfg-asr-base-url").value.trim(),
+    asr_api_key: $("cfg-asr-api-key").value.trim(),
+    target_min_seconds: Number($("cfg-target-min").value) || 30,
+    target_max_seconds: Number($("cfg-target-max").value) || 3600,
     export_accurate: $("cfg-export-accurate").checked,
   };
   if (!payload.base_url) {
     alert("接口地址 base_url 不能为空");
+    return;
+  }
+  if (payload.target_min_seconds >= payload.target_max_seconds) {
+    alert("目标最短时长必须小于目标最长时长");
     return;
   }
   try {
@@ -397,6 +408,53 @@ async function saveConfig() {
   }
 }
 
+async function testConnection(kind) {
+  const btn = document.querySelector(`.btn-test[data-kind="${kind}"]`);
+  const statusBox = $(`ping-status-${kind}`);
+  const baseUrl = $(`cfg-${kind}-base-url`).value.trim() || $("cfg-base-url").value.trim();
+  const key = $(`cfg-${kind}-api-key`).value.trim() || $("cfg-api-key").value.trim();
+  if (!baseUrl) {
+    alert("请先填写接口地址（本组或全局均可）");
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "测试中…";
+  statusBox.textContent = "";
+  statusBox.className = "cfg-ping-status";
+  try {
+    const result = await api("/api/config/test-connection", {
+      method: "POST",
+      body: JSON.stringify({ kind, base_url: baseUrl, api_key: key }),
+    });
+    if (result.ok) {
+      statusBox.textContent = `✅ 已连通（${result.url}）——发现 ${result.count} 个模型，点击模型名输入框即可下拉选择`;
+      statusBox.classList.add("ok");
+      const dl = $(`dl-${kind}`);
+      dl.innerHTML = (result.models || [])
+        .map((m) => `<option value="${escapeAttr(m)}"></option>`)
+        .join("");
+      const modelInput = $(`cfg-${kind}-model`);
+      if ((result.models || []).length && !modelInput.value) {
+        modelInput.value = result.models[0];
+      }
+    } else {
+      statusBox.textContent = "❌ " + (result.detail || "无法连接，请检查地址与密钥");
+      statusBox.classList.add("fail");
+    }
+  } catch (err) {
+    statusBox.textContent = "❌ " + err.message;
+    statusBox.classList.add("fail");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "测试连接";
+  }
+}
+
+function openConfig() {
+  $("config-modal").classList.remove("hidden");
+  loadConfig().catch((e) => alert("加载配置失败：" + e.message));
+}
+
 /* ---------------- 初始化 ---------------- */
 
 async function init() {
@@ -404,6 +462,9 @@ async function init() {
   $("btn-back-home").addEventListener("click", closeReport);
   document.querySelectorAll(".btn-browse").forEach((btn) => {
     btn.addEventListener("click", () => openFileBrowser(btn.dataset.target, btn.dataset.filter));
+  });
+  document.querySelectorAll(".btn-test").forEach((btn) => {
+    btn.addEventListener("click", () => testConnection(btn.dataset.kind));
   });
   $("btn-fb-up").addEventListener("click", fileListUp);
   $("btn-fb-cancel").addEventListener("click", () => $("file-modal").classList.add("hidden"));

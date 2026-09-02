@@ -36,14 +36,20 @@ DEFAULTS: dict[str, Any] = {
         "asr_model": "whisper-1",
         "timeout": 180,
         "concurrency": 4,
+        # 高级设置：每个模型能力可单独指定接口地址与密钥（空值 = 继承上面的全局配置）
+        "endpoints": {
+            "llm": {"base_url": "", "api_key": ""},
+            "vision": {"base_url": "", "api_key": ""},
+            "asr": {"base_url": "", "api_key": ""},
+        },
     },
     "asr": {"chunk_seconds": 1200, "language": ""},
     "axle": {
         "window_seconds": 600,        # LLM 找内容点的分窗大小（秒）
         "overlap_seconds": 60,        # 相邻窗重叠（秒），避免漏掉跨窗内容点
-        "target_min_seconds": 60,     # 目标最短时长（秒）= 1 分钟
-        "target_max_seconds": 180,    # 目标最长时长（秒）= 3 分钟
-        "hard_max_seconds": 600,      # 硬上限（秒）= 10 分钟，超过自动拆分
+        "target_min_seconds": 30,     # 目标最短时长（秒）= 30 秒
+        "target_max_seconds": 3600,   # 目标最长时长（秒）= 1 小时
+        "hard_max_seconds": 3600,     # 硬上限（秒）= 1 小时，超过自动拆分
         "merge_gap_seconds": 30,      # 相邻内容点合并间隔（秒）
         "max_axles": 100,             # 最多输出轴数
         "silence_threshold_db": -35,  # 静音检测阈值（dB）

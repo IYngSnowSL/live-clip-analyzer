@@ -147,40 +147,115 @@
     <div class="modal-content config-modal">
       <h3>⚙️ 设置</h3>
 
-      <div class="cfg-section">AI 接口（必填）</div>
+      <div class="cfg-recommend">
+        <div class="cfg-recommend-title">💡 API 推荐 <span class="cfg-recommend-date">推荐日期 2026-09-02（注意时效）</span></div>
+        <div class="cfg-recommend-body">
+          <b>首选：硅基流动 SiliconFlow</b> —— 一个 key 通吃文本 / 视觉 / ASR，OpenAI 兼容、国内直连、价格低<br />
+          base_url：<code>https://api.siliconflow.cn/v1</code><br />
+          文本 <code>Qwen/Qwen2.5-72B-Instruct</code>（或 <code>deepseek-ai/DeepSeek-V3</code>）
+          ｜ 视觉 <code>Qwen/Qwen2.5-VL-72B-Instruct</code>
+          ｜ ASR <code>FunAudioLLM/SenseVoiceSmall</code><br />
+          <b>备选</b>：文本用 DeepSeek（<code>https://api.deepseek.com/v1</code>，中文强、便宜），
+          ASR 在下方高级设置里单独配硅基流动。
+        </div>
+      </div>
+
+      <div class="cfg-section">AI 接口（默认）</div>
       <div class="form-row">
         <label for="cfg-base-url">接口地址 base_url</label>
-        <input type="text" id="cfg-base-url" placeholder="https://api.openai.com/v1" autocomplete="off" />
+        <input type="text" id="cfg-base-url" placeholder="https://api.siliconflow.cn/v1" autocomplete="off" />
       </div>
       <div class="form-row">
         <label for="cfg-api-key">API Key</label>
         <input type="password" id="cfg-api-key" placeholder="sk-..." autocomplete="off" />
         <div class="cfg-hint" id="cfg-key-hint"></div>
       </div>
-      <div class="form-row two-col">
-        <div>
-          <label for="cfg-vision-model">视觉模型</label>
-          <input type="text" id="cfg-vision-model" placeholder="gpt-4o" autocomplete="off" />
+
+      <details class="cfg-advanced" id="cfg-advanced">
+        <summary>高级设置：每个模型单独配置 API（留空则继承上方全局配置）</summary>
+        <div class="cfg-advanced-body">
+
+          <div class="cfg-model-group">
+            <div class="cfg-model-title">📝 文本模型（LLM · 打轴核心）</div>
+            <div class="form-row">
+              <label for="cfg-llm-model">模型名</label>
+              <div class="model-row">
+                <input type="text" id="cfg-llm-model" list="dl-llm" placeholder="填模型名；点「测试连接」后可下拉选择" autocomplete="off" />
+                <datalist id="dl-llm"></datalist>
+                <button type="button" class="btn ghost btn-test" data-kind="llm">测试连接</button>
+              </div>
+              <div class="cfg-ping-status" id="ping-status-llm"></div>
+            </div>
+            <div class="form-row two-col">
+              <div>
+                <label for="cfg-llm-base-url">接口地址（留空继承全局）</label>
+                <input type="text" id="cfg-llm-base-url" placeholder="https://..." autocomplete="off" />
+              </div>
+              <div>
+                <label for="cfg-llm-api-key">API Key（留空继承全局）</label>
+                <input type="password" id="cfg-llm-api-key" autocomplete="off" />
+              </div>
+            </div>
+          </div>
+
+          <div class="cfg-model-group">
+            <div class="cfg-model-title">👁️ 视觉模型（预留，打轴暂未使用）</div>
+            <div class="form-row">
+              <label for="cfg-vision-model">模型名</label>
+              <div class="model-row">
+                <input type="text" id="cfg-vision-model" list="dl-vision" placeholder="填模型名；点「测试连接」后可下拉选择" autocomplete="off" />
+                <datalist id="dl-vision"></datalist>
+                <button type="button" class="btn ghost btn-test" data-kind="vision">测试连接</button>
+              </div>
+              <div class="cfg-ping-status" id="ping-status-vision"></div>
+            </div>
+            <div class="form-row two-col">
+              <div>
+                <label for="cfg-vision-base-url">接口地址（留空继承全局）</label>
+                <input type="text" id="cfg-vision-base-url" placeholder="https://..." autocomplete="off" />
+              </div>
+              <div>
+                <label for="cfg-vision-api-key">API Key（留空继承全局）</label>
+                <input type="password" id="cfg-vision-api-key" autocomplete="off" />
+              </div>
+            </div>
+          </div>
+
+          <div class="cfg-model-group">
+            <div class="cfg-model-title">🎙️ ASR 转写模型（语音转写）</div>
+            <div class="form-row">
+              <label for="cfg-asr-model">模型名</label>
+              <div class="model-row">
+                <input type="text" id="cfg-asr-model" list="dl-asr" placeholder="填模型名；点「测试连接」后可下拉选择" autocomplete="off" />
+                <datalist id="dl-asr"></datalist>
+                <button type="button" class="btn ghost btn-test" data-kind="asr">测试连接</button>
+              </div>
+              <div class="cfg-ping-status" id="ping-status-asr"></div>
+            </div>
+            <div class="form-row two-col">
+              <div>
+                <label for="cfg-asr-base-url">接口地址（留空继承全局）</label>
+                <input type="text" id="cfg-asr-base-url" placeholder="https://..." autocomplete="off" />
+              </div>
+              <div>
+                <label for="cfg-asr-api-key">API Key（留空继承全局）</label>
+                <input type="password" id="cfg-asr-api-key" autocomplete="off" />
+              </div>
+            </div>
+          </div>
+
         </div>
-        <div>
-          <label for="cfg-llm-model">文本模型</label>
-          <input type="text" id="cfg-llm-model" placeholder="gpt-4o-mini" autocomplete="off" />
-        </div>
-      </div>
-      <div class="form-row">
-        <label for="cfg-asr-model">ASR 转写模型</label>
-        <input type="text" id="cfg-asr-model" placeholder="whisper-1" autocomplete="off" />
-      </div>
+      </details>
 
       <div class="cfg-section">打轴参数（可选）</div>
       <div class="form-row two-col">
         <div>
-          <label for="cfg-target-min">目标最短（秒）</label>
-          <input type="number" id="cfg-target-min" min="10" step="10" />
+          <label for="cfg-target-min">目标最短（秒，默认 30）</label>
+          <input type="number" id="cfg-target-min" min="5" step="5" />
         </div>
         <div>
-          <label for="cfg-target-max">目标最长（秒）</label>
-          <input type="number" id="cfg-target-max" min="30" step="30" />
+          <label for="cfg-target-max">目标最长（秒，默认 3600 = 1 小时）</label>
+          <input type="number" id="cfg-target-max" min="60" step="30" />
         </div>
       </div>
       <div class="form-row">

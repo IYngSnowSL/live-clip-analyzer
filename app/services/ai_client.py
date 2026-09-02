@@ -33,6 +33,11 @@ def image_to_data_url(path: str | Path) -> str:
 
 
 class AIClient:
+    """三种模型能力（LLM / 视觉 / ASR）可各自配置独立接口地址与密钥。
+
+    高级设置（ai.endpoints）中某项为空时，继承全局 ai.base_url / ai.api_key。
+    """
+
     def __init__(self, ai_cfg):
         self.base_url = str(ai_cfg.base_url).rstrip("/")
         if not self.base_url.startswith(("http://", "https://")):
@@ -43,16 +48,30 @@ class AIClient:
         self.asr_model = str(ai_cfg.asr_model)
         self.timeout = float(ai_cfg.timeout)
         self.concurrency = int(ai_cfg.concurrency)
-        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        self.client = httpx.AsyncClient(base_url=self.base_url, headers=headers, timeout=self.timeout)
+
+        eps = getattr(ai_cfg, "endpoints", None)
+        eps = eps if isinstance(eps, dict) else {}
+        self._clients: dict[str, httpx.AsyncClient] = {}
+        for kind in ("llm", "vision", "asr"):
+            ep = eps.get(kind) if isinstance(eps.get(kind), dict) else {}
+            base = str((ep or {}).get("base_url") or "").strip() or self.base_url
+            key = str((ep or {}).get("api_key") or "").strip() or self.api_key
+            headers = {"Authorization": f"Bearer {key}"} if key else {}
+            self._clients[kind] = httpx.AsyncClient(
+                base_url=base.rstrip("/"), headers=headers, timeout=self.timeout)
+
+    def _client(self, kind: str) -> httpx.AsyncClient:
+        return self._clients.get(kind) or self._clients["llm"]
 
     async def close(self) -> None:
-        await self.client.aclose()
+        for client in self._clients.values():
+            await client.aclose()
 
-    async def _post_json(self, path: str, payload: dict, retries: int = 3) -> dict:
+    async def _post_json(self, kind: str, path: str, payload: dict, retries: int = 3) -> dict:
+        client = self._client(kind)
         last_exc: AIError | None = None
         for attempt in range(retries):
-            resp = await self.client.post(path, json=payload)
+            resp = await client.post(path, json=payload)
             if resp.status_code < 400:
                 try:
                     return resp.json()
@@ -70,8 +89,8 @@ class AIClient:
 
     async def chat(self, messages: list[dict], model: str | None = None,
                    temperature: float = 0.3, max_tokens: int = 1200,
-                   json_mode: bool = False) -> str:
-        model = model or self.llm_model
+                   json_mode: bool = False, kind: str = "llm") -> str:
+        model = model or (self.llm_model if kind == "llm" else self.vision_model)
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -81,11 +100,11 @@ class AIClient:
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
         try:
-            data = await self._post_json("/chat/completions", payload)
+            data = await self._post_json(kind, "/chat/completions", payload)
         except AIError as exc:
             if json_mode and exc.status_code in (400, 404, 422):
                 payload.pop("response_format", None)
-                data = await self._post_json("/chat/completions", payload)
+                data = await self._post_json(kind, "/chat/completions", payload)
             else:
                 raise
         choices = data.get("choices") or []
@@ -95,9 +114,10 @@ class AIClient:
         return content or ""
 
     async def chat_json(self, messages: list[dict], model: str | None = None,
-                        temperature: float = 0.3, max_tokens: int = 1200) -> dict:
+                        temperature: float = 0.3, max_tokens: int = 1200,
+                        kind: str = "llm") -> dict:
         content = await self.chat(messages, model=model, temperature=temperature,
-                                  max_tokens=max_tokens, json_mode=True)
+                                  max_tokens=max_tokens, json_mode=True, kind=kind)
         return extract_json(content)
 
     # ---------------- 能力接口 ----------------
@@ -107,7 +127,7 @@ class AIClient:
                                max_tokens: int = 1600) -> str | dict:
         """文档 / 字幕分析：把 instruction + text 组合成 prompt 调 LLM。
 
-        用于字幕切分、字幕整理、话题摘要等"对一段文本做分析"的场景。
+        用于找内容点、打轴等"对一段文本做分析"的场景。
         """
         prompt = f"{instruction}\n\n【文档内容】\n{text}"
         messages = [
@@ -115,8 +135,8 @@ class AIClient:
             {"role": "user", "content": prompt},
         ]
         if json_mode:
-            return await self.chat_json(messages, model=model, max_tokens=max_tokens)
-        return await self.chat(messages, model=model, max_tokens=max_tokens)
+            return await self.chat_json(messages, model=model, max_tokens=max_tokens, kind="llm")
+        return await self.chat(messages, model=model, max_tokens=max_tokens, kind="llm")
 
     async def describe_images(self, image_paths: list[str | Path], prompt: str,
                               max_tokens: int = 500) -> str:
@@ -133,11 +153,13 @@ class AIClient:
             return ""
         messages = [{"role": "user", "content": content}]
         try:
-            text = await self.chat(messages, model=self.vision_model, max_tokens=max_tokens)
+            text = await self.chat(messages, model=self.vision_model,
+                                   max_tokens=max_tokens, kind="vision")
         except AIError:
             if len(content) > 2:
                 messages = [{"role": "user", "content": content[:2]}]
-                text = await self.chat(messages, model=self.vision_model, max_tokens=max_tokens)
+                text = await self.chat(messages, model=self.vision_model,
+                                       max_tokens=max_tokens, kind="vision")
             else:
                 raise
         return text or ""
@@ -158,11 +180,12 @@ class AIClient:
         elif path.suffix.lower() in (".wav",):
             mime = "audio/wav"
 
+        client = self._client("asr")
         last_exc: AIError | None = None
         for attempt in range(retries):
             with open(path, "rb") as f:
                 files = {"file": (path.name, f, mime)}
-                resp = await self.client.post("/audio/transcriptions", data=data, files=files)
+                resp = await client.post("/audio/transcriptions", data=data, files=files)
             if resp.status_code < 400:
                 try:
                     return resp.json()
