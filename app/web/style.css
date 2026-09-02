@@ -772,8 +772,8 @@ body.view-report .window {
   line-height: 1;
 }
 
-/* 设置弹窗：保存/取消按钮吸底，始终可见（不随内容滚出视口） */
-#config-modal .modal-content { display: flex; flex-direction: column; }
+/* 设置弹窗：保存/取消按钮吸底，始终可见（不随内容滚出视口）。
+   注意：modal-content 保持普通块布局（勿改 flex，会压缩 details 高级设置区） */
 #config-modal .modal-actions {
   position: sticky;
   bottom: 0;
