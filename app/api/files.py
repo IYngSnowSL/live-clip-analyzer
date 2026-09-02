@@ -90,3 +90,22 @@ async def find_sibling_danmaku(video_path: str):
         raise HTTPException(404, f"视频文件不存在: {video_path}")
     sibling = p.with_suffix(".xml")
     return {"path": str(sibling) if sibling.exists() else None}
+
+
+@router.get("/media-info")
+async def media_info(path: str):
+    """返回视频的时长（秒）与大小（字节），供文件浏览器展示。"""
+    p = Path(path)
+    if not p.exists():
+        raise HTTPException(404, f"文件不存在: {path}")
+    if not p.is_file():
+        raise HTTPException(400, f"不是文件: {path}")
+    size = p.stat().st_size
+    duration = 0.0
+    try:
+        from ..services.ffmpeg_utils import ffprobe_duration
+        import asyncio
+        duration = await ffprobe_duration(p)
+    except Exception:
+        duration = 0.0
+    return {"duration": round(float(duration), 1), "size": size}

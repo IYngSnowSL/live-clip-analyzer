@@ -200,6 +200,13 @@
     <div class="modal-content file-browser">
       <h3 id="file-modal-title">选择文件</h3>
       <div class="fb-path" id="fb-path">加载中…</div>
+      <div class="fb-fav-bar">
+        <button type="button" id="btn-fb-fav" class="ghost" title="收藏 / 取消收藏当前路径">☆ 收藏当前路径</button>
+      </div>
+      <div class="fb-favorites hidden" id="fb-favorites">
+        <div class="fb-fav-title">⭐ 收藏路径（点击直达）</div>
+        <div class="fb-fav-list" id="fb-fav-list"></div>
+      </div>
       <div class="fb-list" id="fb-list"></div>
       <div class="fb-footer">
         <span id="fb-selected-count" class="muted">勾选文件可多选</span>
@@ -253,8 +260,14 @@
             <div class="form-row">
               <label for="cfg-llm-model">模型名</label>
               <div class="model-row">
-                <input type="text" id="cfg-llm-model" list="dl-llm" placeholder="填模型名；点「测试连接」后可下拉选择" autocomplete="off" />
-                <datalist id="dl-llm"></datalist>
+                <div class="model-select">
+                  <input type="text" id="cfg-llm-model" class="ms-input" placeholder="选择或输入模型名" autocomplete="off" />
+                  <button type="button" class="ms-toggle" data-kind="llm" title="展开模型列表">▾</button>
+                  <div class="ms-panel hidden" data-kind="llm">
+                    <div class="ms-info" id="ms-llm-info">尚未获取模型列表（点「测试连接」自动填充）</div>
+                    <div class="ms-list" id="ms-llm-list"></div>
+                  </div>
+                </div>
                 <button type="button" class="btn ghost btn-test" data-kind="llm">测试连接</button>
               </div>
               <div class="cfg-ping-status" id="ping-status-llm"></div>
@@ -276,8 +289,14 @@
             <div class="form-row">
               <label for="cfg-vision-model">模型名</label>
               <div class="model-row">
-                <input type="text" id="cfg-vision-model" list="dl-vision" placeholder="填模型名；点「测试连接」后可下拉选择" autocomplete="off" />
-                <datalist id="dl-vision"></datalist>
+                <div class="model-select">
+                  <input type="text" id="cfg-vision-model" class="ms-input" placeholder="选择或输入模型名" autocomplete="off" />
+                  <button type="button" class="ms-toggle" data-kind="vision" title="展开模型列表">▾</button>
+                  <div class="ms-panel hidden" data-kind="vision">
+                    <div class="ms-info" id="ms-vision-info">尚未获取模型列表（点「测试连接」自动填充）</div>
+                    <div class="ms-list" id="ms-vision-list"></div>
+                  </div>
+                </div>
                 <button type="button" class="btn ghost btn-test" data-kind="vision">测试连接</button>
               </div>
               <div class="cfg-ping-status" id="ping-status-vision"></div>
@@ -318,8 +337,14 @@
             <div class="form-row">
               <label for="cfg-asr-model">模型名</label>
               <div class="model-row">
-                <input type="text" id="cfg-asr-model" list="dl-asr" placeholder="填模型名；点「测试连接」后可下拉选择" autocomplete="off" />
-                <datalist id="dl-asr"></datalist>
+                <div class="model-select">
+                  <input type="text" id="cfg-asr-model" class="ms-input" placeholder="选择或输入模型名" autocomplete="off" />
+                  <button type="button" class="ms-toggle" data-kind="asr" title="展开模型列表">▾</button>
+                  <div class="ms-panel hidden" data-kind="asr">
+                    <div class="ms-info" id="ms-asr-info">尚未获取模型列表（点「测试连接」自动填充）</div>
+                    <div class="ms-list" id="ms-asr-list"></div>
+                  </div>
+                </div>
                 <button type="button" class="btn ghost btn-test" data-kind="asr">测试连接</button>
               </div>
               <div class="cfg-ping-status" id="ping-status-asr"></div>

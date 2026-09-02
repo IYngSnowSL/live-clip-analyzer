@@ -581,16 +581,107 @@ function updateFbFooter() {
   btn.textContent = n ? `确认选择（${n} 个）` : "确认选择";
 }
 
+/* ---------------- 收藏路径 ---------------- */
+
+function getFavorites() {
+  try { return JSON.parse(localStorage.getItem("lca-favorite-dirs") || "[]"); } catch (e) { return []; }
+}
+
+function saveFavorites(list) {
+  localStorage.setItem("lca-favorite-dirs", JSON.stringify(list));
+}
+
+function renderFavorites() {
+  const favs = getFavorites();
+  $("fb-favorites").classList.toggle("hidden", favs.length === 0);
+  $("fb-fav-list").innerHTML = favs.map((d, i) =>
+    `<div class="fb-fav-item"><span class="fb-fav-path" data-path="${escapeAttr(d)}" title="点击进入">⭐ ${escapeHtml(d)}</span><button class="fb-fav-del" data-i="${i}" title="移除收藏">×</button></div>`
+  ).join("");
+  document.querySelectorAll(".fb-fav-path").forEach((el) => {
+    el.addEventListener("click", () => loadFileList(el.dataset.path));
+  });
+  document.querySelectorAll(".fb-fav-del").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const favs = getFavorites();
+      favs.splice(Number(el.dataset.i), 1);
+      saveFavorites(favs);
+      renderFavorites();
+      renderFavButton();
+    });
+  });
+}
+
+function renderFavButton() {
+  const favs = getFavorites();
+  const btn = $("btn-fb-fav");
+  const on = favs.includes(fbPath);
+  btn.textContent = on ? "★ 已收藏当前路径" : "☆ 收藏当前路径";
+  btn.classList.toggle("fav-on", on);
+}
+
+function toggleFavorite() {
+  if (!fbPath) return;
+  let favs = getFavorites();
+  if (favs.includes(fbPath)) {
+    favs = favs.filter((d) => d !== fbPath);
+  } else {
+    favs.push(fbPath);
+  }
+  saveFavorites(favs);
+  renderFavorites();
+  renderFavButton();
+}
+
+/* ---------------- 视频时长渐进填充 ---------------- */
+
+function formatDuration(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.round(sec % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function fillDurations() {
+  const queue = [];
+  document.querySelectorAll("#fb-list .fb-file").forEach((el) => {
+    const durEl = el.querySelector(".fb-duration");
+    if (durEl && !durEl.dataset.loaded) {
+      queue.push({ el: durEl, path: el.dataset.path });
+    }
+  });
+  if (!queue.length) return;
+  let cursor = 0;
+  const CONCURRENCY = 2;
+  async function worker() {
+    while (cursor < queue.length) {
+      const item = queue[cursor++];
+      try {
+        const r = await api(`/api/files/media-info?path=${encodeURIComponent(item.path)}`);
+        if (r.duration > 0) {
+          item.el.textContent = `⏱ ${formatDuration(r.duration)}`;
+          item.el.dataset.loaded = "1";
+        }
+      } catch (e) { /* 忽略个别探测失败 */ }
+    }
+  }
+  for (let i = 0; i < Math.min(CONCURRENCY, queue.length); i++) worker();
+}
+
 function renderFileList(data) {
   $("fb-path").textContent = fbPath || "我的电脑";
   $("btn-fb-up").disabled = !fbPath;
+  renderFavorites();
+  renderFavButton();
   const parts = [];
   (data.dirs || []).forEach((d) => {
     parts.push(`<div class="fb-item fb-dir" data-path="${escapeAttr(d.path)}"><span class="fb-icon">📁</span><span class="fb-name">${escapeHtml(d.name)}</span></div>`);
   });
   (data.files || []).forEach((f) => {
     const selected = fbSelected.has(f.path) ? " selected" : "";
-    parts.push(`<div class="fb-item fb-file${selected}" data-path="${escapeAttr(f.path)}"><span class="fb-icon">📄</span><span class="fb-name">${escapeHtml(f.name)}</span><span class="fb-size">${formatSize(f.size)}</span></div>`);
+    const isVideo = /\.(mp4|flv|mkv|mov|avi|ts|m4v|wmv|webm|m2ts)$/i.test(f.name);
+    parts.push(`<div class="fb-item fb-file${selected}" data-path="${escapeAttr(f.path)}"><span class="fb-icon">${isVideo ? "🎬" : "📄"}</span><span class="fb-name">${escapeHtml(f.name)}</span>${isVideo ? `<span class="fb-duration" data-loaded=""></span>` : ""}<span class="fb-size">${formatSize(f.size)}</span></div>`);
   });
   if (!parts.length) {
     $("fb-list").innerHTML = `<div class="muted">（空目录，或没有匹配类型的文件）</div>`;
@@ -617,6 +708,7 @@ function renderFileList(data) {
       updateFbFooter();
     });
   });
+  setTimeout(fillDurations, 60);
 }
 
 function formatSize(bytes) {
@@ -700,6 +792,83 @@ async function saveConfig() {
   }
 }
 
+/* ---------------- 模型下拉（按功能筛选） ---------------- */
+
+const MODEL_PATTERNS = {
+  asr: /asr|whisper|sensevoice|paraformer|funasr|speech2text|audio2text|transcri/i,
+  vision: /vl|vision|visual|llava|internvl|minicpm-v|glm-4v|glm-4\.5v|deepseek-vl|vlm|ocr/i,
+};
+const MODEL_LABELS = { llm: "文本模型", vision: "视觉模型", asr: "ASR 模型" };
+
+function classifyModel(name) {
+  const n = name.toLowerCase();
+  if (MODEL_PATTERNS.asr.test(n)) return "asr";
+  if (MODEL_PATTERNS.vision.test(n)) return "vision";
+  return "llm";
+}
+
+function fillModelLists(models) {
+  const buckets = { llm: [], vision: [], asr: [] };
+  (models || []).forEach((m) => buckets[classifyModel(m)].push(m));
+  window.modelCatalog = buckets;
+  ["llm", "vision", "asr"].forEach((kind) => renderModelSelect(kind));
+}
+
+function renderModelSelect(kind) {
+  const items = (window.modelCatalog && window.modelCatalog[kind]) || [];
+  const info = $(`ms-${kind}-info`);
+  const list = $(`ms-${kind}-list`);
+  if (!items.length) {
+    info.textContent = "未筛选出该类模型（点「测试连接」获取列表）";
+    info.classList.remove("ok");
+    list.innerHTML = "";
+    return;
+  }
+  info.textContent = `✅ 已筛选出 ${items.length} 个${MODEL_LABELS[kind]}（共 ${totalCatalogCount()} 个模型）`;
+  info.classList.add("ok");
+  list.innerHTML = items.map((m) =>
+    `<div class="ms-option" data-kind="${kind}" data-model="${escapeAttr(m)}">${escapeHtml(m)}</div>`
+  ).join("");
+}
+
+function totalCatalogCount() {
+  const c = window.modelCatalog;
+  return c ? c.llm.length + c.vision.length + c.asr.length : 0;
+}
+
+function toggleModelPanel(kind, forceOpen) {
+  const panel = document.querySelector(`.ms-panel[data-kind="${kind}"]`);
+  if (!panel) return;
+  const shouldOpen = forceOpen === undefined ? panel.classList.contains("hidden") : forceOpen;
+  document.querySelectorAll(".ms-panel").forEach((p) => p.classList.add("hidden"));
+  if (shouldOpen) panel.classList.remove("hidden");
+}
+
+function initModelSelects() {
+  document.querySelectorAll(".ms-toggle").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleModelPanel(btn.dataset.kind);
+    });
+  });
+  document.querySelectorAll(".ms-input").forEach((input) => {
+    input.addEventListener("focus", () => toggleModelPanel(input.id.replace("cfg-", "").replace("-model", ""), true));
+  });
+  document.addEventListener("click", () => {
+    document.querySelectorAll(".ms-panel").forEach((p) => p.classList.add("hidden"));
+  });
+  document.querySelectorAll(".ms-panel").forEach((panel) => {
+    panel.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const opt = e.target.closest(".ms-option");
+      if (opt) {
+        $(`cfg-${opt.dataset.kind}-model`).value = opt.dataset.model;
+        panel.classList.add("hidden");
+      }
+    });
+  });
+}
+
 async function testConnection(kind) {
   const isGlobal = kind === "global";
   const btn = document.querySelector(`.btn-test[data-kind="${kind}"]`);
@@ -724,24 +893,23 @@ async function testConnection(kind) {
       body: JSON.stringify({ kind, base_url: baseUrl, api_key: key }),
     });
     if (result.ok) {
-      const fillDatalist = (targetKind) => {
-        const dl = $(`dl-${targetKind}`);
-        dl.innerHTML = (result.models || [])
-          .map((m) => `<option value="${escapeAttr(m)}"></option>`)
-          .join("");
-      };
       if (isGlobal) {
-        // 全局接口连通：模型列表同时填充到下方三个模型的候选列表
-        statusBox.textContent = `✅ 已连通（${result.url}）——发现 ${result.count} 个模型，已填充到下方文本 / 视觉 / ASR 的模型名候选列表（点击输入框下拉选择）`;
+        // 全局接口连通：按功能筛选后填充三个模型下拉
+        statusBox.textContent = `✅ 已连通（${result.url}）——发现 ${result.count} 个模型，已按功能筛选到下方三个模型下拉（点击 ▾ 选择）`;
         statusBox.classList.add("ok");
-        ["llm", "vision", "asr"].forEach(fillDatalist);
+        fillModelLists(result.models || []);
       } else {
-        statusBox.textContent = `✅ 已连通（${result.url}）——发现 ${result.count} 个模型，点击模型名输入框即可下拉选择`;
+        statusBox.textContent = `✅ 已连通（${result.url}）——发现 ${result.count} 个模型，点击 ▾ 下拉选择`;
         statusBox.classList.add("ok");
-        fillDatalist(kind);
+        // 单端点 ping：把模型按功能分类，仅填充对应分类
+        if (!window.modelCatalog) window.modelCatalog = { llm: [], vision: [], asr: [] };
+        const buckets = { llm: [], vision: [], asr: [] };
+        (result.models || []).forEach((m) => buckets[classifyModel(m)].push(m));
+        window.modelCatalog[kind] = buckets[kind];
+        renderModelSelect(kind);
         const modelInput = $(`cfg-${kind}-model`);
-        if ((result.models || []).length && !modelInput.value) {
-          modelInput.value = result.models[0];
+        if (buckets[kind].length && !modelInput.value) {
+          modelInput.value = buckets[kind][0];
         }
       }
     } else {
@@ -773,7 +941,9 @@ async function init() {
   document.querySelectorAll(".btn-test").forEach((btn) => {
     btn.addEventListener("click", () => testConnection(btn.dataset.kind));
   });
+  initModelSelects();
   $("btn-fb-up").addEventListener("click", fileListUp);
+  $("btn-fb-fav").addEventListener("click", toggleFavorite);
   $("btn-fb-cancel").addEventListener("click", () => $("file-modal").classList.add("hidden"));
   $("file-modal").addEventListener("click", (e) => {
     if (e.target === $("file-modal")) $("file-modal").classList.add("hidden");
