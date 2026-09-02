@@ -137,7 +137,7 @@ async def update_config(payload: ConfigUpdate) -> dict:
 
 
 class TestConnectionPayload(BaseModel):
-    kind: str = "llm"          # llm / vision / asr
+    kind: str = "llm"          # llm / vision / asr / global（global=测试全局默认接口）
     base_url: str = ""
     api_key: str = ""          # 可为空或掩码：掩码时后端取本地对应配置的真实 key
 
@@ -145,6 +145,8 @@ class TestConnectionPayload(BaseModel):
 def _resolve_local_key(kind: str) -> str:
     """ping 时若前端传空/掩码 key，取本地对应配置的真实 key。"""
     cfg = load_config()
+    if kind == "global":
+        return str(cfg.ai.api_key or "")
     eps = getattr(cfg.ai, "endpoints", None)
     eps = eps if isinstance(eps, dict) else {}
     ep = eps.get(kind) if isinstance(eps.get(kind), dict) else {}

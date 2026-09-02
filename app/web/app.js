@@ -409,10 +409,15 @@ async function saveConfig() {
 }
 
 async function testConnection(kind) {
+  const isGlobal = kind === "global";
   const btn = document.querySelector(`.btn-test[data-kind="${kind}"]`);
   const statusBox = $(`ping-status-${kind}`);
-  const baseUrl = $(`cfg-${kind}-base-url`).value.trim() || $("cfg-base-url").value.trim();
-  const key = $(`cfg-${kind}-api-key`).value.trim() || $("cfg-api-key").value.trim();
+  const baseUrl = isGlobal
+    ? $("cfg-base-url").value.trim()
+    : ($(`cfg-${kind}-base-url`).value.trim() || $("cfg-base-url").value.trim());
+  const key = isGlobal
+    ? $("cfg-api-key").value.trim()
+    : ($(`cfg-${kind}-api-key`).value.trim() || $("cfg-api-key").value.trim());
   if (!baseUrl) {
     alert("请先填写接口地址（本组或全局均可）");
     return;
@@ -427,15 +432,25 @@ async function testConnection(kind) {
       body: JSON.stringify({ kind, base_url: baseUrl, api_key: key }),
     });
     if (result.ok) {
-      statusBox.textContent = `✅ 已连通（${result.url}）——发现 ${result.count} 个模型，点击模型名输入框即可下拉选择`;
-      statusBox.classList.add("ok");
-      const dl = $(`dl-${kind}`);
-      dl.innerHTML = (result.models || [])
-        .map((m) => `<option value="${escapeAttr(m)}"></option>`)
-        .join("");
-      const modelInput = $(`cfg-${kind}-model`);
-      if ((result.models || []).length && !modelInput.value) {
-        modelInput.value = result.models[0];
+      const fillDatalist = (targetKind) => {
+        const dl = $(`dl-${targetKind}`);
+        dl.innerHTML = (result.models || [])
+          .map((m) => `<option value="${escapeAttr(m)}"></option>`)
+          .join("");
+      };
+      if (isGlobal) {
+        // 全局接口连通：模型列表同时填充到下方三个模型的候选列表
+        statusBox.textContent = `✅ 已连通（${result.url}）——发现 ${result.count} 个模型，已填充到下方文本 / 视觉 / ASR 的模型名候选列表（点击输入框下拉选择）`;
+        statusBox.classList.add("ok");
+        ["llm", "vision", "asr"].forEach(fillDatalist);
+      } else {
+        statusBox.textContent = `✅ 已连通（${result.url}）——发现 ${result.count} 个模型，点击模型名输入框即可下拉选择`;
+        statusBox.classList.add("ok");
+        fillDatalist(kind);
+        const modelInput = $(`cfg-${kind}-model`);
+        if ((result.models || []).length && !modelInput.value) {
+          modelInput.value = result.models[0];
+        }
       }
     } else {
       statusBox.textContent = "❌ " + (result.detail || "无法连接，请检查地址与密钥");

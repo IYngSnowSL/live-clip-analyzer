@@ -163,7 +163,11 @@
       <div class="cfg-section">AI 接口（默认）</div>
       <div class="form-row">
         <label for="cfg-base-url">接口地址 base_url</label>
-        <input type="text" id="cfg-base-url" placeholder="https://api.siliconflow.cn/v1" autocomplete="off" />
+        <div class="model-row">
+          <input type="text" id="cfg-base-url" placeholder="https://api.siliconflow.cn/v1" autocomplete="off" />
+          <button type="button" class="btn ghost btn-test" data-kind="global">测试连接</button>
+        </div>
+        <div class="cfg-ping-status" id="ping-status-global"></div>
       </div>
       <div class="form-row">
         <label for="cfg-api-key">API Key</label>
