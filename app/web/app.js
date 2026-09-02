@@ -66,6 +66,7 @@ function renderTasks(tasks) {
         <div class="row">
           <button data-id="${t.id}" class="btn-view">查看</button>
           <button data-id="${t.id}" class="btn-delete ghost">删除</button>
+          <button data-id="${t.id}" class="btn-reaxle-task ghost">重新打轴</button>
         </div>
       </div>`;
       }).join("")
@@ -76,6 +77,9 @@ function renderTasks(tasks) {
   });
   document.querySelectorAll(".btn-view").forEach((btn) => {
     btn.addEventListener("click", () => openReport(btn.dataset.id));
+  });
+  document.querySelectorAll(".btn-reaxle-task").forEach((btn) => {
+    btn.addEventListener("click", () => openReaxle(btn.dataset.id));
   });
   document.querySelectorAll(".btn-delete").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -324,8 +328,11 @@ function startPolling(taskId) {
 
 /* ---------------- 重新打轴 ---------------- */
 
-function openReaxle() {
-  if (!currentTaskId) return;
+let reaxleTaskId = null;
+
+function openReaxle(taskId) {
+  reaxleTaskId = taskId || currentTaskId;
+  if (!reaxleTaskId) return;
   $("reaxle-min").value = 30;
   $("reaxle-max").value = 3600;
   $("reaxle-fine").checked = false;
@@ -425,6 +432,7 @@ function switchTab(name) {
 }
 
 async function confirmReaxle() {
+  const tid = reaxleTaskId || currentTaskId;
   const payload = {
     target_min_seconds: Number($("reaxle-min").value) || 30,
     target_max_seconds: Number($("reaxle-max").value) || 3600,
@@ -435,13 +443,18 @@ async function confirmReaxle() {
     return;
   }
   try {
-    await api(`/api/tasks/${currentTaskId}/reaxle`, {
+    await api(`/api/tasks/${tid}/reaxle`, {
       method: "POST",
       body: JSON.stringify(payload),
     });
     $("reaxle-modal").classList.add("hidden");
-    $("report-status").textContent = "重新打轴进行中…（复用 ASR 结果，不重复计费）";
-    startPolling(currentTaskId);
+    if (tid === currentTaskId) {
+      $("report-status").textContent = "重新打轴进行中…（复用 ASR 结果，不重复计费）";
+      startPolling(tid);
+    } else {
+      await loadTasks();
+      alert("已开始重新打轴，任务列表可查看进度");
+    }
   } catch (err) {
     alert("重新打轴失败：" + err.message);
   }
@@ -799,7 +812,6 @@ async function init() {
     await exportAxleIds(null, $("btn-export-all"));
   });
   $("btn-cancel-review").addEventListener("click", () => $("edit-modal").classList.add("hidden"));
-  $("btn-reaxle").addEventListener("click", openReaxle);
   $("btn-confirm-reaxle").addEventListener("click", confirmReaxle);
   $("btn-cancel-reaxle").addEventListener("click", () => $("reaxle-modal").classList.add("hidden"));
   $("reaxle-modal").addEventListener("click", (e) => {
