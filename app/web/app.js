@@ -133,6 +133,13 @@ function renderAxles(axles) {
     const title = a.review_title || a.title || "";
     const duration = Math.max(0, Math.round(end - start));
     const reviewed = a.reviewed ? " · 已复核" : "";
+    const peaks = a.danmaku_peaks || [];
+    const peaksHtml = peaks.length
+      ? `<div class="axle-peaks">🔥 弹幕高峰：${peaks.map((p) =>
+          `<a class="time-link" target="_blank" href="/static/preview.html?task=${currentTaskId}&t=${p.t}">${formatTs(p.t)}（${p.count}条/分）</a>`
+        ).join("  ")}</div>`
+      : "";
+    const copyText = `[${formatTs(start)} - ${formatTs(end)}] ${title}`;
     return `
       <div class="axle-item">
         <div class="head">
@@ -140,9 +147,11 @@ function renderAxles(axles) {
           <span class="badge">${a.score ?? 0} 分 · ${duration}s${reviewed}</span>
         </div>
         <div class="meta"><b>理由：</b>${escapeHtml(a.reason || "（无）")}</div>
+        ${peaksHtml}
         <div class="actions">
           <button class="btn-edit" data-id="${a.id}">复核打轴</button>
           <button class="btn-export-one" data-id="${a.id}">导出此切片</button>
+          <button class="btn-copy-one" data-text="${escapeAttr(copyText)}">复制</button>
         </div>
       </div>`;
   }).join("");
@@ -152,6 +161,43 @@ function renderAxles(axles) {
   document.querySelectorAll(".btn-export-one").forEach((btn) => {
     btn.addEventListener("click", () => exportAxleIds([Number(btn.dataset.id)], btn));
   });
+  document.querySelectorAll(".btn-copy-one").forEach((btn) => {
+    btn.addEventListener("click", () => copyToClipboard(btn.dataset.text, "该轴时间标记"));
+  });
+}
+
+/* ---------------- 复制（共享表格友好） ---------------- */
+
+async function copyToClipboard(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+  $("report-status").textContent = `✅ 已复制${label || ""}到剪贴板（可直接粘贴到 Excel / 共享表格）`;
+}
+
+function buildAxlesTsv() {
+  const rows = [["开始", "结束", "时长(秒)", "标题", "推荐理由", "评分"]];
+  const sorted = [...currentAxles].sort((x, y) => (x.review_start ?? x.start) - (y.review_start ?? y.start));
+  for (const a of sorted) {
+    const start = a.review_start ?? a.start;
+    const end = a.review_end ?? a.end;
+    rows.push([
+      formatTs(start),
+      formatTs(end),
+      String(Math.max(0, Math.round(end - start))),
+      a.review_title || a.title || "",
+      a.reason || "",
+      String(a.score ?? 0),
+    ]);
+  }
+  return rows.map((r) => r.join("\t")).join("\n");
 }
 
 function openEdit(axleId) {
@@ -288,16 +334,85 @@ function openReaxle() {
 
 /* ---------------- 字幕页 ---------------- */
 
+let subtitleContentRaw = "";
+let subtitleEntries = []; // [{start, end, text}]
+
+function parseSrt(content) {
+  const entries = [];
+  const lines = content.split(String.fromCharCode(10));
+  for (let i = 0; i < lines.length - 2; i++) {
+    const m = (lines[i + 1] || "").match(
+      /(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/
+    );
+    if (m) {
+      const toSec = (h, mi, s, ms) => Number(h) * 3600 + Number(mi) * 60 + Number(s) + Number(ms) / 1000;
+      entries.push({
+        start: toSec(m[1], m[2], m[3], m[4]),
+        end: toSec(m[5], m[6], m[7], m[8]),
+        text: (lines[i + 2] || "").trim(),
+      });
+      i += 2;
+    }
+  }
+  return entries;
+}
+
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function loadSubtitle() {
   if (!currentTaskId) return;
   const box = $("subtitle-content");
   try {
     const data = await api(`/api/tasks/${currentTaskId}/subtitle`);
     $("subtitle-path").textContent = data.path;
-    box.textContent = data.content || "（空）";
+    subtitleContentRaw = data.content || "";
+    subtitleEntries = parseSrt(subtitleContentRaw);
+    box.textContent = subtitleContentRaw || "（空）";
+    $("subtitle-search").value = "";
+    $("subtitle-results").classList.add("hidden");
+    $("subtitle-results").innerHTML = "";
   } catch (err) {
     box.textContent = "字幕文件尚未生成（ASR 转写完成后自动生成），错误：" + err.message;
   }
+}
+
+function renderSubtitleHighlight(keyword) {
+  const box = $("subtitle-content");
+  if (!keyword) {
+    box.textContent = subtitleContentRaw;
+    return;
+  }
+  const esc = escapeHtml(subtitleContentRaw);
+  const re = new RegExp(escapeRegExp(escapeHtml(keyword)), "gi");
+  box.innerHTML = esc.replace(re, (m) => `<mark>${m}</mark>`);
+}
+
+function searchSubtitle() {
+  const q = $("subtitle-search").value.trim();
+  const resultsBox = $("subtitle-results");
+  if (!q) {
+    resultsBox.classList.add("hidden");
+    resultsBox.innerHTML = "";
+    renderSubtitleHighlight("");
+    return;
+  }
+  const matches = subtitleEntries.filter((e) => e.text.includes(q));
+  if (!matches.length) {
+    resultsBox.classList.remove("hidden");
+    resultsBox.innerHTML = `<div class="muted">无匹配内容</div>`;
+    renderSubtitleHighlight(q);
+    return;
+  }
+  resultsBox.classList.remove("hidden");
+  resultsBox.innerHTML = matches.slice(0, 50).map((m) =>
+    `<div class="subtitle-result">
+      <a class="time-link" target="_blank" href="/static/preview.html?task=${currentTaskId}&t=${m.start}">${formatTs(m.start)}</a>
+      ${escapeHtml(m.text)}
+    </div>`
+  ).join("") + (matches.length > 50 ? `<div class="muted">…共 ${matches.length} 条匹配，仅显示前 50 条</div>` : "");
+  renderSubtitleHighlight(q);
 }
 
 function switchTab(name) {
@@ -693,6 +808,14 @@ async function init() {
   $("btn-score-help").addEventListener("click", () => {
     $("score-help").classList.toggle("hidden");
   });
+  $("btn-copy-all").addEventListener("click", () => {
+    if (!currentAxles.length) {
+      alert("当前没有轴可复制");
+      return;
+    }
+    copyToClipboard(buildAxlesTsv(), `全部 ${currentAxles.length} 个轴清单（制表符分隔）`);
+  });
+  $("subtitle-search").addEventListener("input", searchSubtitle);
   document.querySelectorAll(".win-tab").forEach((btn) => {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });

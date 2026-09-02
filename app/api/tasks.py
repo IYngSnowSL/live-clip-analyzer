@@ -64,14 +64,16 @@ async def create_task(payload: TaskCreate):
     if payload.danmaku_path and not Path(payload.danmaku_path).exists():
         raise HTTPException(400, f"弹幕文件不存在: {payload.danmaku_path}")
 
-    # 未填弹幕时自动查找同目录同名 .xml
+    # 未填弹幕时自动查找同目录同名 .xml；显式传入的弹幕优先
+    danmaku = payload.danmaku_path
     auto_danmaku = None
-    if not payload.danmaku_path:
+    if not danmaku:
         auto_danmaku = _auto_danmaku(video_path)
+        danmaku = auto_danmaku
 
     task = models.create_task(
         video_path=str(video_path.resolve()),
-        danmaku_path=str(Path(auto_danmaku).resolve()) if auto_danmaku else None,
+        danmaku_path=str(Path(danmaku).resolve()) if danmaku else None,
         offset_seconds=payload.offset_seconds,
     )
     if auto_danmaku:

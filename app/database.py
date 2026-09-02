@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS axles (
     title TEXT,
     reason TEXT,
     score REAL,
+    danmaku_peaks TEXT,
     reviewed INTEGER DEFAULT 0,
     review_start REAL,
     review_end REAL,
@@ -57,10 +58,13 @@ def init_db(db_path: str | Path) -> None:
     conn = sqlite3.connect(DB_PATH)
     try:
         conn.executescript(SCHEMA)
-        # 迁移：旧库补 srt_path 列（v0.4.0 字幕附属文件）
-        cols = [r[1] for r in conn.execute("PRAGMA table_info(tasks)")]
-        if "srt_path" not in cols:
+        # 迁移：旧库补列（v0.4.0 字幕、v0.4.2 弹幕峰值）
+        task_cols = [r[1] for r in conn.execute("PRAGMA table_info(tasks)")]
+        if "srt_path" not in task_cols:
             conn.execute("ALTER TABLE tasks ADD COLUMN srt_path TEXT")
+        axle_cols = [r[1] for r in conn.execute("PRAGMA table_info(axles)")]
+        if "danmaku_peaks" not in axle_cols:
+            conn.execute("ALTER TABLE axles ADD COLUMN danmaku_peaks TEXT")
         conn.commit()
     finally:
         conn.close()

@@ -103,6 +103,23 @@ async def run_task(task_id: str) -> None:
             {"task_id": task_id, "axle_index": i, **a}
             for i, a in enumerate(axles)
         ]
+
+        # 4.5 弹幕高峰标注（任务关联了弹幕时）
+        if task.get("danmaku_path"):
+            try:
+                from ..services.danmaku import build_density, find_peaks, parse_danmaku
+                dms = await asyncio.to_thread(
+                    parse_danmaku, task["danmaku_path"],
+                    float(task.get("offset_seconds") or 0))
+                density = build_density(dms)
+                for a in full_axles:
+                    a["danmaku_peaks"] = find_peaks(density, a["start"], a["end"])
+                if dms:
+                    update_task(task_id, progress=80,
+                                message=f"弹幕解析完成（{len(dms)} 条），已标注各轴弹幕高峰")
+            except Exception as exc:  # noqa: BLE001
+                print(f"[danmaku] 弹幕高峰计算失败（不影响打轴）: {exc}")
+
         save_axles(task_id, full_axles)
         update_task(task_id, progress=95, message=f"打轴完成，共 {len(full_axles)} 个切片轴")
 

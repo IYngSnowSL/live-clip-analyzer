@@ -1,6 +1,7 @@
 """数据访问层：任务 / 轴（axles）。"""
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -88,6 +89,7 @@ def mark_interrupted_tasks() -> int:
 
 AXLE_FIELDS = [
     "task_id", "axle_index", "start", "end", "title", "reason", "score",
+    "danmaku_peaks",
 ]
 
 
@@ -100,6 +102,8 @@ def save_axles(task_id: str, axles: list[dict[str, Any]]) -> None:
             values = []
             for f in AXLE_FIELDS:
                 val = task_id if f == "task_id" else a.get(f)
+                if isinstance(val, (list, dict)):
+                    val = json.dumps(val, ensure_ascii=False)
                 values.append(val)
             placeholders = ",".join("?" for _ in AXLE_FIELDS)
             sql = f"INSERT INTO axles ({','.join(AXLE_FIELDS)}) VALUES ({placeholders})"
@@ -109,13 +113,25 @@ def save_axles(task_id: str, axles: list[dict[str, Any]]) -> None:
         conn.close()
 
 
+def _parse_axle(row) -> dict[str, Any]:
+    d = _row_to_dict(row) or {}
+    if d.get("danmaku_peaks"):
+        try:
+            d["danmaku_peaks"] = json.loads(d["danmaku_peaks"])
+        except (TypeError, ValueError):
+            d["danmaku_peaks"] = []
+    else:
+        d["danmaku_peaks"] = []
+    return d
+
+
 def get_axles(task_id: str) -> list[dict[str, Any]]:
     conn = get_conn()
     try:
         rows = conn.execute(
             "SELECT * FROM axles WHERE task_id=? ORDER BY axle_index ASC", (task_id,)
         ).fetchall()
-        return [_row_to_dict(r) for r in rows]
+        return [_parse_axle(r) for r in rows]
     finally:
         conn.close()
 

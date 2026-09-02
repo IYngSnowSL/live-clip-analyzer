@@ -518,6 +518,66 @@ body.view-report .window {
 .axle-item .meta { color: var(--text-2); font-size: 13px; margin-top: 7px; }
 .axle-item .meta b { color: var(--text); font-weight: 600; }
 .axle-item .actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+.axle-peaks {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  background: var(--high-bg);
+  border: 1px solid rgba(233, 162, 59, .3);
+  border-radius: 8px;
+  padding: 6px 10px;
+  display: inline-flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.axle-peaks .time-link { color: var(--high); }
+
+/* ---------------- 字幕搜索 ---------------- */
+.subtitle-search {
+  flex: 1;
+  min-width: 180px;
+  max-width: 320px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.subtitle-search:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(77, 107, 254, .15);
+}
+.subtitle-path-row { margin: 6px 0 8px; }
+.subtitle-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.subtitle-result {
+  font-size: 12.5px;
+  color: var(--text-2);
+  line-height: 1.6;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.subtitle-result .time-link { flex-shrink: 0; }
+.subtitle-view mark {
+  background: rgba(233, 162, 59, .45);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 0 2px;
+}
 
 .time-link { color: var(--primary); text-decoration: none; font-variant-numeric: tabular-nums; font-weight: 600; }
 .time-link:hover { text-decoration: underline; }
