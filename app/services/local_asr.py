@@ -35,8 +35,16 @@ def _get_model(cfg):
         from faster_whisper import WhisperModel
         device = str(getattr(cfg.asr, "local_device", "cpu") or "cpu")
         compute = str(getattr(cfg.asr, "local_compute_type", "int8") or "int8")
+        # 限制 CPU 线程数：whisper 默认吃满全部核心会导致 uvicorn 事件循环饿死
+        # （HTTP 请求超时、WebUI 无响应），留出核心给服务本身
+        cpu_threads = int(getattr(cfg.asr, "local_cpu_threads", 6) or 6)
+        try:
+            cpu_count = os.cpu_count() or 2
+            cpu_threads = max(2, min(cpu_threads, cpu_count - 2))
+        except Exception:
+            pass
         _model_cache[model_path] = WhisperModel(
-            model_path, device=device, compute_type=compute)
+            model_path, device=device, compute_type=compute, cpu_threads=cpu_threads)
     return _model_cache[model_path]
 
 

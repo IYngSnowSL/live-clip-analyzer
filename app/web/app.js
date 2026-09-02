@@ -15,19 +15,31 @@ function formatTs(seconds) {
 }
 
 async function api(path, options = {}) {
-  const resp = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-  if (!resp.ok) {
-    let detail = `HTTP ${resp.status}`;
-    try {
-      const j = await resp.json();
-      detail = j.detail || detail;
-    } catch (e) { /* ignore */ }
-    throw new Error(detail);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45000);  // 45s 超时保护
+  try {
+    const resp = await fetch(path, {
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      ...options,
+    });
+    if (!resp.ok) {
+      let detail = `HTTP ${resp.status}`;
+      try {
+        const j = await resp.json();
+        detail = j.detail || detail;
+      } catch (e) { /* ignore */ }
+      throw new Error(detail);
+    }
+    return resp.json();
+  } catch (e) {
+    if (e.name === "AbortError") {
+      throw new Error("服务响应超时（可能正在本地转写，稍候重试）");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  return resp.json();
 }
 
 function escapeHtml(text) {
