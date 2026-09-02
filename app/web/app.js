@@ -66,7 +66,7 @@ function renderTasks(tasks) {
         <div class="row">
           <button data-id="${t.id}" class="btn-view">查看</button>
           <button data-id="${t.id}" class="btn-delete ghost">删除</button>
-          <button data-id="${t.id}" class="btn-reaxle-task ghost">重新打轴</button>
+          <button data-id="${t.id}" class="btn-reaxle-task ghost" title="重新调整切片区间与详细解释（复用转写，不重复计费）">重新打轴</button>
         </div>
       </div>`;
       }).join("")
