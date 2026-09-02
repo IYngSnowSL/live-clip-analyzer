@@ -87,6 +87,12 @@
           </div>
           <div id="report-status" class="report-status"></div>
 
+          <div class="win-tabs">
+            <button class="win-tab active" data-tab="axles">✂️ 切片轴</button>
+            <button class="win-tab" data-tab="subtitle">📝 字幕文件</button>
+          </div>
+
+          <div id="tab-axles">
           <div class="section-block">
             <div class="section-head">
               <h3>切片轴</h3>
@@ -107,6 +113,19 @@
           <div class="section-block">
             <div class="section-head"><h3>导出结果</h3></div>
             <div id="export-results" class="candidates"></div>
+          </div>
+          </div>
+
+          <div id="tab-subtitle" class="hidden">
+            <div class="section-block">
+              <div class="section-head">
+                <h3>字幕文件</h3>
+                <div class="filter-row">
+                  <span id="subtitle-path" class="muted"></span>
+                </div>
+              </div>
+              <pre id="subtitle-content" class="subtitle-view">点击「字幕文件」标签加载…</pre>
+            </div>
           </div>
         </div>
       </div>

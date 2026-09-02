@@ -286,6 +286,29 @@ function openReaxle() {
   $("reaxle-modal").classList.remove("hidden");
 }
 
+/* ---------------- 字幕页 ---------------- */
+
+async function loadSubtitle() {
+  if (!currentTaskId) return;
+  const box = $("subtitle-content");
+  try {
+    const data = await api(`/api/tasks/${currentTaskId}/subtitle`);
+    $("subtitle-path").textContent = data.path;
+    box.textContent = data.content || "（空）";
+  } catch (err) {
+    box.textContent = "字幕文件尚未生成（ASR 转写完成后自动生成），错误：" + err.message;
+  }
+}
+
+function switchTab(name) {
+  document.querySelectorAll(".win-tab").forEach((b) => {
+    b.classList.toggle("active", b.dataset.tab === name);
+  });
+  $("tab-axles").classList.toggle("hidden", name !== "axles");
+  $("tab-subtitle").classList.toggle("hidden", name !== "subtitle");
+  if (name === "subtitle") loadSubtitle();
+}
+
 async function confirmReaxle() {
   const payload = {
     target_min_seconds: Number($("reaxle-min").value) || 30,
@@ -643,6 +666,9 @@ async function init() {
       $("offset_seconds").value = "0";
       await loadTasks();
       await openReport(task.id);
+      if (task._auto_danmaku) {
+        alert(`已在视频同目录发现同名弹幕文件，已自动关联：\n${task.danmaku_path}`);
+      }
     } catch (err) {
       alert("创建失败：" + err.message);
     } finally {
@@ -666,6 +692,9 @@ async function init() {
   });
   $("btn-score-help").addEventListener("click", () => {
     $("score-help").classList.toggle("hidden");
+  });
+  document.querySelectorAll(".win-tab").forEach((btn) => {
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
   $("btn-fb-confirm").addEventListener("click", () => {
     const paths = [...fbSelected.keys()];

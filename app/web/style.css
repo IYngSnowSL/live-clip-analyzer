@@ -823,6 +823,47 @@ body.view-report .window {
   word-break: break-all;
 }
 
+/* ---------------- 窗口内标签页 ---------------- */
+.win-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 16px 0 0;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+.win-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  padding: 9px 16px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.win-tab:hover { color: var(--text); background: var(--surface-2); }
+.win-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+.subtitle-view {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--text-2);
+  max-height: 520px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
 /* ---------------- 响应式 ---------------- */
 @media (max-width: 860px) {
   .home-tasks {

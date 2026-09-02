@@ -27,6 +27,12 @@ class BatchCreate(BaseModel):
     offset_seconds: float = 0.0
 
 
+def _auto_danmaku(video_path: Path) -> str | None:
+    """自动查找视频同目录的同名弹幕 XML（如 live.flv → live.xml）。"""
+    sibling = video_path.with_suffix(".xml")
+    return str(sibling) if sibling.exists() else None
+
+
 @router.post("/batch")
 async def create_tasks_batch(payload: BatchCreate):
     """批量创建任务：一次传入多个视频路径，并行分析。"""
@@ -39,9 +45,10 @@ async def create_tasks_batch(payload: BatchCreate):
         video_path = Path(vp)
         if not video_path.exists():
             raise HTTPException(400, f"视频文件不存在: {vp}")
+        danmaku = payload.danmaku_path or _auto_danmaku(video_path)
         task = models.create_task(
             video_path=str(video_path.resolve()),
-            danmaku_path=str(Path(payload.danmaku_path).resolve()) if payload.danmaku_path else None,
+            danmaku_path=str(Path(danmaku).resolve()) if danmaku else None,
             offset_seconds=payload.offset_seconds,
         )
         start_task(task["id"])
@@ -57,11 +64,18 @@ async def create_task(payload: TaskCreate):
     if payload.danmaku_path and not Path(payload.danmaku_path).exists():
         raise HTTPException(400, f"弹幕文件不存在: {payload.danmaku_path}")
 
+    # 未填弹幕时自动查找同目录同名 .xml
+    auto_danmaku = None
+    if not payload.danmaku_path:
+        auto_danmaku = _auto_danmaku(video_path)
+
     task = models.create_task(
         video_path=str(video_path.resolve()),
-        danmaku_path=str(Path(payload.danmaku_path).resolve()) if payload.danmaku_path else None,
+        danmaku_path=str(Path(auto_danmaku).resolve()) if auto_danmaku else None,
         offset_seconds=payload.offset_seconds,
     )
+    if auto_danmaku:
+        task["_auto_danmaku"] = True  # 仅供前端提示，不落库
     start_task(task["id"])
     return task
 

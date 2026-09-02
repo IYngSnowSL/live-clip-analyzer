@@ -73,6 +73,20 @@ async def review_axle(task_id: str, axle_id: int, payload: ReviewPayload):
     return {"ok": True}
 
 
+@router.get("/{task_id}/subtitle")
+async def get_subtitle(task_id: str):
+    """返回 SRT 字幕文件内容与路径（供 WebUI 字幕页展示/下载）。"""
+    task = _get_task_or_404(task_id)
+    srt_path = task.get("srt_path")
+    if not srt_path:
+        raise HTTPException(404, "该任务尚未生成字幕文件（需完成 ASR 转写）")
+    path = Path(srt_path)
+    if not path.exists():
+        raise HTTPException(404, f"字幕文件不存在: {srt_path}")
+    content = path.read_text(encoding="utf-8-sig")
+    return {"path": str(path), "content": content}
+
+
 @router.get("/{task_id}/axles.csv")
 async def export_axles_csv(task_id: str):
     """导出轴清单 CSV（BOM 让 Excel 正确识别 UTF-8），可直接对照剪辑软件打轴。"""

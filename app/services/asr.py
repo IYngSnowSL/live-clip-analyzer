@@ -1,6 +1,7 @@
-"""ASR 语音转写：自动分块，合并时间戳。"""
+"""ASR 语音转写：自动分块，合并时间戳；SRT 字幕附属文件。"""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from .ai_client import AIError
@@ -79,10 +80,29 @@ async def _transcribe_one(client, file_path: Path, duration: float, language: st
     return []
 
 
-# ---------------- SRT 字幕文件（附属产物，存视频根目录） ----------------
+# ---------------- SRT 字幕文件（附属产物，存视频根目录的日期文件夹） ----------------
+
+_EMOJI_RE = re.compile(
+    "[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F000-\U0001F0FF"
+    "\U0000FE00-\U0000FE0F\u200D\uFE0F\u2600-\u26FF\u2700-\u27BF]"
+)
+
+
+def clean_subtitle_text(text: str) -> str:
+    """字幕文本清理：去表情、句号转逗号做句读、句尾不带句号（保留情感标点 ？！）。"""
+    text = _EMOJI_RE.sub("", str(text or ""))
+    # 中文句号与英文句号 → 逗号做句读（“不使用句号”）
+    text = text.replace("。", "，").replace(".", "，")
+    # 连续逗号压缩
+    text = re.sub(r"[，,]{2,}", "，", text)
+    # 句尾的逗号/句读符去掉
+    text = re.sub(r"[，,]+$", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
 
 def segments_to_srt(segments: list[dict]) -> str:
-    """ASR 片段转标准 SRT 字幕文本。"""
+    """ASR 片段转标准 SRT 字幕文本（可插入视频；无表情，句读+情感标点，不用句号）。"""
     def ts(sec: float) -> str:
         ms = int(round(float(sec) * 1000))
         h, rem = divmod(ms, 3600000)
@@ -92,7 +112,7 @@ def segments_to_srt(segments: list[dict]) -> str:
 
     blocks = []
     for i, seg in enumerate(segments, 1):
-        text = str(seg.get("text") or "").strip().replace("\n", " ")
+        text = clean_subtitle_text(seg.get("text") or "")
         if not text:
             continue
         blocks.append(f"{i}\n{ts(seg['start'])} --> {ts(seg['end'])}\n{text}\n")
@@ -100,7 +120,13 @@ def segments_to_srt(segments: list[dict]) -> str:
 
 
 def save_srt(video_path: str | Path, segments: list[dict]) -> Path:
-    """把 ASR 结果写成与视频同目录同名的 .srt 文件，返回保存路径。"""
-    srt_path = Path(video_path).with_suffix(".srt")
+    """把 ASR 结果写成 SRT：在视频同目录创建「[创建日期]_视频名」文件夹存放，返回保存路径。"""
+    from datetime import datetime
+
+    video = Path(video_path)
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    folder = video.parent / f"[{date_str}]_{video.stem}"
+    folder.mkdir(parents=True, exist_ok=True)
+    srt_path = folder / f"{video.stem}.srt"
     srt_path.write_text(segments_to_srt(segments), encoding="utf-8-sig")
     return srt_path
