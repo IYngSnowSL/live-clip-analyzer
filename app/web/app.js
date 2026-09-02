@@ -49,26 +49,31 @@ function taskStatusBadge(task) {
 }
 
 function renderTasks(tasks) {
-  const box = $("task-list");
-  if (!tasks.length) {
-    box.innerHTML = `<div class="muted">暂无任务，请先创建。</div>`;
-    return;
-  }
-  box.innerHTML = tasks.map((t) => {
-    const progress = t.progress || 0;
-    const active = t.id === currentTaskId ? " active" : "";
-    return `
+  const html = tasks.length
+    ? tasks.map((t) => {
+        const progress = t.progress || 0;
+        const active = t.id === currentTaskId ? " active" : "";
+        return `
       <div class="task-item${active}">
         <div class="info">
           <div class="name">${escapeHtml(t.video_path || "")}</div>
-          <div class="meta">${t.id} · ${t.created_at} · ${escapeHtml(t.message || "")}</div>
+          <div class="meta">${t.id} · ${escapeHtml(t.message || "")}</div>
         </div>
-        <div class="progress"><div style="width:${progress}%"></div></div>
-        ${taskStatusBadge(t)}
-        <button data-id="${t.id}" class="btn-view">查看</button>
-        <button data-id="${t.id}" class="btn-delete ghost">删除</button>
+        <div class="row">
+          <div class="progress"><div style="width:${progress}%"></div></div>
+          ${taskStatusBadge(t)}
+        </div>
+        <div class="row">
+          <button data-id="${t.id}" class="btn-view">查看</button>
+          <button data-id="${t.id}" class="btn-delete ghost">删除</button>
+        </div>
       </div>`;
-  }).join("");
+      }).join("")
+    : `<div class="muted">暂无任务，请先创建。</div>`;
+
+  ["task-list", "win-task-list"].forEach((id) => {
+    $(id).innerHTML = html;
+  });
   document.querySelectorAll(".btn-view").forEach((btn) => {
     btn.addEventListener("click", () => openReport(btn.dataset.id));
   });
@@ -78,21 +83,13 @@ function renderTasks(tasks) {
       try {
         await api(`/api/tasks/${btn.dataset.id}`, { method: "DELETE" });
         await loadTasks();
-        if (currentTaskId === btn.dataset.id) {
-          currentTaskId = null;
-          $("report-card").classList.add("hidden");
-          $("empty-state").classList.remove("hidden");
-        }
+        if (currentTaskId === btn.dataset.id) closeReport();
       } catch (err) {
         if (String(err.message).includes("正在运行") && confirm("任务正在运行，是否强制删除？")) {
           try {
             await api(`/api/tasks/${btn.dataset.id}?force=true`, { method: "DELETE" });
             await loadTasks();
-            if (currentTaskId === btn.dataset.id) {
-              currentTaskId = null;
-              $("report-card").classList.add("hidden");
-              $("empty-state").classList.remove("hidden");
-            }
+            if (currentTaskId === btn.dataset.id) closeReport();
           } catch (err2) {
             alert("强制删除失败：" + err2.message);
           }
@@ -112,8 +109,7 @@ function renderReport(task) {
   $("link-video").href = `/api/tasks/${task.id}/video`;
   $("link-csv").href = `/api/tasks/${task.id}/axles.csv`;
   $("report-card").classList.remove("hidden");
-  $("empty-state").classList.add("hidden");
-  document.body.classList.remove("sidebar-open");
+  $("win-empty").classList.add("hidden");
 }
 
 function renderAxles(axles) {
@@ -161,8 +157,26 @@ function openEdit(axleId) {
   $("edit-modal").classList.remove("hidden");
 }
 
+/* ---------------- 窗口开关（第二页嵌套覆盖） ---------------- */
+
+function openWindow() {
+  document.body.classList.add("view-report");
+}
+
+function closeReport() {
+  document.body.classList.remove("view-report");
+  currentTaskId = null;
+  $("report-card").classList.add("hidden");
+  $("win-empty").classList.remove("hidden");
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
+}
+
 async function openReport(taskId) {
   currentTaskId = taskId;
+  openWindow();
   const task = await api(`/api/tasks/${taskId}`);
   renderReport(task);
   await loadTasks();
@@ -386,9 +400,8 @@ async function saveConfig() {
 /* ---------------- 初始化 ---------------- */
 
 async function init() {
-  $("sidebar-toggle").addEventListener("click", () => {
-    document.body.classList.toggle("sidebar-open");
-  });
+  $("btn-settings").addEventListener("click", openConfig);
+  $("btn-back-home").addEventListener("click", closeReport);
   document.querySelectorAll(".btn-browse").forEach((btn) => {
     btn.addEventListener("click", () => openFileBrowser(btn.dataset.target, btn.dataset.filter));
   });
@@ -397,31 +410,41 @@ async function init() {
   $("file-modal").addEventListener("click", (e) => {
     if (e.target === $("file-modal")) $("file-modal").classList.add("hidden");
   });
-  $("btn-settings").addEventListener("click", openConfig);
   $("btn-cancel-config").addEventListener("click", () => $("config-modal").classList.add("hidden"));
   $("btn-save-config").addEventListener("click", saveConfig);
   $("config-modal").addEventListener("click", (e) => {
     if (e.target === $("config-modal")) $("config-modal").classList.add("hidden");
   });
 
-  $("create-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
+  $("btn-start").addEventListener("click", async () => {
     const payload = {
       video_path: $("video_path").value.trim(),
       danmaku_path: $("danmaku_path").value.trim() || null,
       offset_seconds: Number($("offset_seconds").value) || 0,
     };
+    if (!payload.video_path) {
+      alert("请先填写视频路径");
+      return;
+    }
+    const btn = $("btn-start");
+    const oldText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "创建中…";
     try {
       const task = await api("/api/tasks", {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      $("create-form").reset();
+      $("video_path").value = "";
+      $("danmaku_path").value = "";
       $("offset_seconds").value = "0";
       await loadTasks();
       await openReport(task.id);
     } catch (err) {
       alert("创建失败：" + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = oldText;
     }
   });
 

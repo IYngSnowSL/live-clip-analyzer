@@ -7,105 +7,104 @@
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <button id="sidebar-toggle" class="sidebar-toggle" title="切换侧栏">☰</button>
+  <!-- 右上角设置 -->
+  <button id="btn-settings" class="fab-settings" title="设置">⚙️</button>
 
-  <div class="app">
-    <aside class="sidebar" id="sidebar">
-      <div class="brand">
-        <div class="brand-logo">🎬</div>
-        <div>
-          <div class="brand-name">直播切片分析</div>
-          <div class="brand-sub">Live Clip Analyzer</div>
-        </div>
+  <!-- ═══════════ 第一页：首页 ═══════════ -->
+  <div class="home" id="home">
+    <div class="home-center" id="home-center">
+      <div class="home-logo">🎬</div>
+      <h1 class="home-title">直播切片分析</h1>
+      <p class="home-sub">输入录播视频，自动打轴——找出所有值得切的内容点与精确时间</p>
+
+      <div class="input-bar">
+        <span class="input-icon">🎞️</span>
+        <input type="text" id="video_path" placeholder="视频路径，如 D:\videos\live_001.flv" required autocomplete="off" />
+        <button type="button" class="btn-browse" data-target="video_path" data-filter="video" title="浏览视频文件">📂</button>
+      </div>
+      <div class="input-bar">
+        <span class="input-icon">💬</span>
+        <input type="text" id="danmaku_path" placeholder="弹幕 XML 路径（可选）" autocomplete="off" />
+        <input type="number" id="offset_seconds" class="offset-input" title="弹幕偏移（秒）" step="0.5" value="0" />
+        <button type="button" class="btn-browse" data-target="danmaku_path" data-filter="xml" title="浏览 XML 文件">📂</button>
       </div>
 
-      <section class="side-section">
-        <div class="section-title">新建分析任务</div>
-        <form id="create-form">
-          <div class="form-row">
-            <label for="video_path">视频路径</label>
-            <div class="path-row">
-              <input type="text" id="video_path" placeholder="D:\videos\live_001.flv" required />
-              <button type="button" class="btn ghost btn-browse" data-target="video_path" data-filter="video" title="浏览视频文件">📂</button>
-            </div>
-          </div>
-          <div class="form-row">
-            <label for="danmaku_path">弹幕 XML 路径（可选）</label>
-            <div class="path-row">
-              <input type="text" id="danmaku_path" placeholder="D:\videos\live_001.xml" />
-              <button type="button" class="btn ghost btn-browse" data-target="danmaku_path" data-filter="xml" title="浏览 XML 文件">📂</button>
-            </div>
-          </div>
-          <div class="form-row">
-            <label for="offset_seconds">弹幕偏移（秒）</label>
-            <input type="number" id="offset_seconds" value="0" step="0.5" />
-          </div>
-          <button type="submit" class="btn btn-primary btn-block">开始打轴</button>
-        </form>
-      </section>
+      <button class="btn-start" id="btn-start">开始打轴</button>
+      <div class="home-hint">需要先在本机配置 AI 接口（右上角 ⚙️）</div>
+    </div>
 
-      <section class="side-section">
-        <div class="section-title">任务列表</div>
-        <div id="task-list" class="task-list"></div>
-      </section>
-
-      <div class="sidebar-footer">
-        <span class="version-pill">v0.3.0</span>
-        <button type="button" id="btn-settings" class="ghost btn-settings" title="配置 AI 接口与参数">⚙️ 设置</button>
-        <span>本地运行 · 个人使用</span>
-      </div>
-    </aside>
-
-    <main class="content">
-      <section id="empty-state" class="empty-state">
-        <div class="empty-icon">🎬</div>
-        <h2>开始给你的直播录像打轴</h2>
-        <p>在左侧填写视频路径，创建任务后自动分析字幕并打轴：每个可切片片段都有精确起止时间、标题与推荐理由。</p>
-        <div class="empty-tags">
-          <span>字幕分析</span>
-          <span>自动打轴</span>
-          <span>静音点精修</span>
-          <span>CSV 导出</span>
-          <span>切片导出</span>
-        </div>
-      </section>
-
-      <section class="card hidden" id="report-card">
-        <div class="report-head">
-          <div>
-            <div class="report-kicker">LIVE CLIP ANALYZER · AXLES</div>
-            <h2 id="report-title">打轴结果</h2>
-          </div>
-          <div class="actions">
-            <button id="btn-refresh" class="ghost">刷新</button>
-            <a id="link-video" class="btn ghost" target="_blank">预览视频</a>
-            <a id="link-csv" class="btn ghost" target="_blank">导出 CSV</a>
-          </div>
-          <div class="actions export-actions">
-            <label class="check-label"><input type="checkbox" id="export-accurate" /> 精切模式（重编码）</label>
-            <button id="btn-export-all" class="btn btn-primary">批量导出全部</button>
-          </div>
-        </div>
-        <div id="report-status" class="report-status"></div>
-
-        <div class="section-block">
-          <div class="section-head">
-            <h3>切片轴</h3>
-            <div class="filter-row">
-              <label for="score-filter">最低评分</label>
-              <input type="number" id="score-filter" value="0" min="0" max="10" step="0.5" />
-            </div>
-          </div>
-          <div id="axles-container" class="axles"></div>
-        </div>
-
-        <div class="section-block">
-          <div class="section-head"><h3>导出结果</h3></div>
-          <div id="export-results" class="candidates"></div>
-        </div>
-      </section>
-    </main>
+    <!-- 左下：任务列表正方格 -->
+    <div class="home-tasks" id="home-tasks">
+      <div class="home-tasks-title">任务列表</div>
+      <div id="task-list" class="task-list"></div>
+    </div>
   </div>
+
+  <!-- ═══════════ 第二页：报告窗口（嵌套覆盖） ═══════════ -->
+  <div class="window-overlay" id="window-overlay">
+    <div class="window" id="report-window">
+      <!-- 左侧：规整收纳的第一页内容 -->
+      <div class="win-sidebar">
+        <div class="win-brand">
+          <span class="win-brand-logo">🎬</span>
+          <div>
+            <div class="win-brand-name">直播切片分析</div>
+            <div class="win-brand-sub">Live Clip Analyzer</div>
+          </div>
+        </div>
+        <div class="win-tasks-title">任务列表</div>
+        <div id="win-task-list" class="task-list"></div>
+        <div class="win-sidebar-foot">
+          <button id="btn-back-home" class="ghost">← 返回首页</button>
+        </div>
+      </div>
+
+      <!-- 右侧：打轴结果 -->
+      <div class="win-main" id="win-main">
+        <div class="win-empty" id="win-empty">
+          <div class="win-empty-icon">🎬</div>
+          <p>在左侧任务列表选择「查看」，<br />或回到首页创建新任务</p>
+        </div>
+
+        <div class="report hidden" id="report-card">
+          <div class="report-head">
+            <div>
+              <div class="report-kicker">LIVE CLIP ANALYZER · AXLES</div>
+              <h2 id="report-title">打轴结果</h2>
+            </div>
+            <div class="actions">
+              <button id="btn-refresh" class="ghost">刷新</button>
+              <a id="link-video" class="btn ghost" target="_blank">预览视频</a>
+              <a id="link-csv" class="btn ghost" target="_blank">导出 CSV</a>
+            </div>
+            <div class="actions export-actions">
+              <label class="check-label"><input type="checkbox" id="export-accurate" /> 精切模式（重编码）</label>
+              <button id="btn-export-all" class="btn btn-primary">批量导出全部</button>
+            </div>
+          </div>
+          <div id="report-status" class="report-status"></div>
+
+          <div class="section-block">
+            <div class="section-head">
+              <h3>切片轴</h3>
+              <div class="filter-row">
+                <label for="score-filter">最低评分</label>
+                <input type="number" id="score-filter" value="0" min="0" max="10" step="0.5" />
+              </div>
+            </div>
+            <div id="axles-container" class="axles"></div>
+          </div>
+
+          <div class="section-block">
+            <div class="section-head"><h3>导出结果</h3></div>
+            <div id="export-results" class="candidates"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 模态框 ═══════════ -->
 
   <div id="edit-modal" class="modal hidden">
     <div class="modal-content">
