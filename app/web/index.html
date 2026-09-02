@@ -25,10 +25,11 @@
     <div id="video-chips" class="video-chips hidden"></div>
     <div class="input-bar">
       <span class="input-icon">💬</span>
-      <input type="text" id="danmaku_path" placeholder="弹幕 XML 路径（可选）" autocomplete="off" />
+      <input type="text" id="danmaku_path" placeholder="弹幕 XML 路径（可选，自动关联同名弹幕）" autocomplete="off" />
       <input type="number" id="offset_seconds" class="offset-input" title="弹幕偏移（秒）" step="0.5" value="0" />
       <button type="button" class="btn-browse" data-target="danmaku_path" data-filter="xml" title="浏览 XML 文件">📂</button>
     </div>
+    <div id="danmaku-hint" class="danmaku-hint hidden"></div>
 
     <button class="btn-start" id="btn-start">开始打轴</button>
     <div class="home-hint">需要先在本机配置 AI 接口（右上角 ⚙️）</div>

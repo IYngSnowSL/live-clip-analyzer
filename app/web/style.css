@@ -294,10 +294,11 @@ body.view-report .home-tasks {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
-  transition: border-color .15s, background .15s;
+  transition: border-color .15s, background .15s, transform .1s;
   flex-shrink: 0;
+  cursor: pointer;
 }
-.task-item:hover { border-color: var(--border-strong); }
+.task-item:hover { border-color: var(--border-strong); transform: translateY(-1px); }
 .task-item.active { border-color: rgba(77, 107, 254, .6); background: var(--primary-soft); }
 .task-item .info { min-width: 0; }
 .task-item .name {
@@ -779,13 +780,11 @@ body.view-report .window {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 7px 10px;
+  padding: 8px 12px;
   margin-bottom: 12px;
-  height: 20px;
-  line-height: 20px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-height: 22px;
+  line-height: 1.6;
+  word-break: break-all;
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
 .fb-list {
@@ -802,12 +801,18 @@ body.view-report .window {
   padding: 9px 12px;
   cursor: pointer;
   border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
   font-size: 13px;
   color: var(--text);
-  transition: background .12s;
+  transition: background .12s, border-color .12s;
 }
 .fb-item:last-child { border-bottom: none; }
-.fb-item:hover { background: var(--primary-soft); }
+.fb-item:hover { background: var(--surface-3); }
+.fb-item.selected {
+  background: var(--primary-soft);
+  border-left-color: var(--primary);
+}
+.fb-item.selected .fb-name { color: var(--text); font-weight: 600; }
 .fb-icon { flex-shrink: 0; }
 .fb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fb-size { margin-left: auto; color: var(--muted); font-size: 11.5px; flex-shrink: 0; }
@@ -835,6 +840,17 @@ body.view-report .window {
   gap: 8px;
   margin-top: 10px;
   justify-content: center;
+}
+.danmaku-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--medium);
+  background: var(--medium-bg);
+  border: 1px solid rgba(34, 160, 107, .35);
+  border-radius: 8px;
+  padding: 6px 10px;
+  word-break: break-all;
+  line-height: 1.5;
 }
 .chip {
   display: inline-flex;

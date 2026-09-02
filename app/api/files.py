@@ -80,3 +80,13 @@ async def list_path(path: str, filter: str = "all"):
     else:
         allow = None
     return _list_dir(path, allow)
+
+
+@router.get("/sibling-danmaku")
+async def find_sibling_danmaku(video_path: str):
+    """查找视频同目录同名 .xml 弹幕文件（供前端选择视频后自动关联显示）。"""
+    p = Path(video_path)
+    if not p.exists():
+        raise HTTPException(404, f"视频文件不存在: {video_path}")
+    sibling = p.with_suffix(".xml")
+    return {"path": str(sibling) if sibling.exists() else None}

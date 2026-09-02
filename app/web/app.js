@@ -53,10 +53,11 @@ function renderTasks(tasks) {
     ? tasks.map((t) => {
         const progress = t.progress || 0;
         const active = t.id === currentTaskId ? " active" : "";
+        const fileName = (t.video_path || "").split(/[\\/]/).pop() || t.video_path || "";
         return `
-      <div class="task-item${active}">
+      <div class="task-item${active}" data-id="${t.id}" title="${escapeAttr(t.video_path || "")}（单击查看打轴结果）">
         <div class="info">
-          <div class="name">${escapeHtml(t.video_path || "")}</div>
+          <div class="name">${escapeHtml(fileName)}</div>
           <div class="meta">${t.id} · ${escapeHtml(t.message || "")}</div>
         </div>
         <div class="row">
@@ -64,7 +65,6 @@ function renderTasks(tasks) {
           ${taskStatusBadge(t)}
         </div>
         <div class="row">
-          <button data-id="${t.id}" class="btn-view">查看</button>
           <button data-id="${t.id}" class="btn-delete ghost">删除</button>
           <button data-id="${t.id}" class="btn-reaxle-task ghost" title="重新调整切片区间与详细解释（复用转写，不重复计费）">重新打轴</button>
         </div>
@@ -75,8 +75,11 @@ function renderTasks(tasks) {
   ["task-list", "win-task-list"].forEach((id) => {
     $(id).innerHTML = html;
   });
-  document.querySelectorAll(".btn-view").forEach((btn) => {
-    btn.addEventListener("click", () => openReport(btn.dataset.id));
+  document.querySelectorAll(".task-item").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return;  // 按钮点击不触发整块切换
+      openReport(el.dataset.id);
+    });
   });
   document.querySelectorAll(".btn-reaxle-task").forEach((btn) => {
     btn.addEventListener("click", () => openReaxle(btn.dataset.id));
@@ -490,6 +493,31 @@ function addVideoChips(paths) {
     }
   }
   renderChips();
+  // 选择视频后检查同目录同名弹幕并显示（单视频时自动填入弹幕路径）
+  if (selectedVideos.length === 1) {
+    checkSiblingDanmaku(selectedVideos[0].path);
+  } else {
+    $("danmaku-hint").classList.add("hidden");
+  }
+}
+
+async function checkSiblingDanmaku(videoPath) {
+  const hint = $("danmaku-hint");
+  try {
+    const r = await api(`/api/files/sibling-danmaku?video_path=${encodeURIComponent(videoPath)}`);
+    if (r.path) {
+      $("danmaku_path").value = r.path;
+      hint.textContent = `✅ 已自动关联同名弹幕文件：${r.path}`;
+      hint.classList.remove("hidden");
+    } else {
+      if ($("danmaku_path").value) {
+        hint.textContent = "未发现同名弹幕文件（可手动填写弹幕路径）";
+        hint.classList.remove("hidden");
+      }
+    }
+  } catch (e) {
+    hint.classList.add("hidden");
+  }
 }
 
 /* ---------------- 文件浏览器 ---------------- */
@@ -539,9 +567,11 @@ async function loadFileList(path) {
 function updateFbFooter() {
   const n = fbSelected.size;
   $("fb-selected-count").textContent = n
-    ? `已勾选 ${n} 个文件`
-    : "点击文件名 = 选单个；勾选 = 多选";
-  $("btn-fb-confirm").classList.toggle("hidden", n === 0);
+    ? `已选中 ${n} 个文件（颜色高亮，点击可取消）`
+    : "点击文件 = 选中（视频可多选，再次点击取消）；点击文件夹进入";
+  const btn = $("btn-fb-confirm");
+  btn.classList.toggle("hidden", n === 0);
+  btn.textContent = n ? `确认选择（${n} 个）` : "确认选择";
 }
 
 function renderFileList(data) {
@@ -552,8 +582,8 @@ function renderFileList(data) {
     parts.push(`<div class="fb-item fb-dir" data-path="${escapeAttr(d.path)}"><span class="fb-icon">📁</span><span class="fb-name">${escapeHtml(d.name)}</span></div>`);
   });
   (data.files || []).forEach((f) => {
-    const checked = fbSelected.has(f.path) ? " checked" : "";
-    parts.push(`<div class="fb-item fb-file" data-path="${escapeAttr(f.path)}"><input type="checkbox" class="fb-check" data-path="${escapeAttr(f.path)}"${checked} /><span class="fb-icon">📄</span><span class="fb-name">${escapeHtml(f.name)}</span><span class="fb-size">${formatSize(f.size)}</span></div>`);
+    const selected = fbSelected.has(f.path) ? " selected" : "";
+    parts.push(`<div class="fb-item fb-file${selected}" data-path="${escapeAttr(f.path)}"><span class="fb-icon">📄</span><span class="fb-name">${escapeHtml(f.name)}</span><span class="fb-size">${formatSize(f.size)}</span></div>`);
   });
   if (!parts.length) {
     $("fb-list").innerHTML = `<div class="muted">（空目录，或没有匹配类型的文件）</div>`;
@@ -565,27 +595,17 @@ function renderFileList(data) {
       const p = el.dataset.path;
       if (el.classList.contains("fb-dir")) {
         loadFileList(p);
-      } else {
-        // 单文件直接回填
-        fbSelected.clear();
-        $("file-modal").classList.add("hidden");
-        if (fbTarget === "video_path") {
-          addVideoChips([p]);
-        } else {
-          $(fbTarget).value = p;
-        }
+        return;
       }
-    });
-  });
-  document.querySelectorAll(".fb-check").forEach((el) => {
-    el.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const p = el.dataset.path;
-      if (el.checked) {
-        const nameEl = el.closest(".fb-item").querySelector(".fb-name");
-        fbSelected.set(p, nameEl ? nameEl.textContent : p);
-      } else {
+      // 点击切换选中：视频模式可多选，其余模式单选
+      const nameEl = el.querySelector(".fb-name");
+      if (fbSelected.has(p)) {
         fbSelected.delete(p);
+        el.classList.remove("selected");
+      } else {
+        if (fbFilter !== "video") fbSelected.clear();
+        fbSelected.set(p, nameEl ? nameEl.textContent : p);
+        el.classList.add("selected");
       }
       updateFbFooter();
     });
