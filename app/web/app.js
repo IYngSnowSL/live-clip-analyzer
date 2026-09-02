@@ -841,7 +841,11 @@ function toggleModelPanel(kind, forceOpen) {
   if (!panel) return;
   const shouldOpen = forceOpen === undefined ? panel.classList.contains("hidden") : forceOpen;
   document.querySelectorAll(".ms-panel").forEach((p) => p.classList.add("hidden"));
-  if (shouldOpen) panel.classList.remove("hidden");
+  if (shouldOpen) {
+    panel.classList.remove("hidden");
+    // 面板可能超出滚动容器可视区：滚动到最近可见位置
+    setTimeout(() => panel.scrollIntoView({ block: "nearest" }), 0);
+  }
 }
 
 function initModelSelects() {

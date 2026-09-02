@@ -721,6 +721,7 @@ body.view-report .window {
   margin: 14px 0 4px;
   overflow: hidden;
 }
+.cfg-advanced[open] { overflow: visible; }  /* 展开时允许模型下拉面板溢出（否则被裁剪） */
 .cfg-advanced summary {
   cursor: pointer;
   padding: 11px 14px;
@@ -773,13 +774,14 @@ body.view-report .window {
 }
 
 /* 设置弹窗：保存/取消按钮吸底，始终可见（不随内容滚出视口）。
+   负 bottom/margin 越过 modal-content 的 22px padding，背景完整遮盖无缝隙。
    注意：modal-content 保持普通块布局（勿改 flex，会压缩 details 高级设置区） */
 #config-modal .modal-actions {
   position: sticky;
-  bottom: 0;
+  bottom: -22px;
+  margin: 8px -22px -22px;
+  padding: 12px 22px 18px;
   background: var(--surface);
-  padding: 12px 0 4px;
-  margin-top: 8px;
   border-top: 1px solid var(--border);
   z-index: 2;
 }
