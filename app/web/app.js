@@ -369,9 +369,14 @@ async function loadConfig() {
   $("cfg-target-min").value = cfg.target_min_seconds ?? 30;
   $("cfg-target-max").value = cfg.target_max_seconds ?? 3600;
   $("cfg-export-accurate").checked = !!cfg.export_accurate;
-  $("cfg-key-hint").textContent = cfg.has_api_key
-    ? "已配置（显示为掩码，保留掩码则不变更）"
-    : "尚未配置 API Key，请填入你的密钥";
+  const hint = $("cfg-key-hint");
+  if (cfg.has_api_key) {
+    hint.textContent = "✅ 已配置（显示为掩码，保留掩码则不变更）";
+    hint.classList.remove("warn");
+  } else {
+    hint.textContent = "⚠️ 尚未配置 API Key，请在下方填入真实密钥后保存";
+    hint.classList.add("warn");
+  }
 }
 
 async function saveConfig() {

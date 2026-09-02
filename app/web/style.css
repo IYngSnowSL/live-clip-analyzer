@@ -623,6 +623,7 @@ body.view-report .window {
   border-top: 1px solid var(--border);
 }
 .cfg-hint { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+.cfg-hint.warn { color: var(--high); font-weight: 600; }
 
 .cfg-recommend {
   background: var(--primary-soft);

@@ -84,6 +84,9 @@ async def get_config() -> dict:
         result[flat] = mask_key(val) if flat in _KEY_FIELDS else val
     raw_key = str(cfg.ai.api_key or "").strip()
     result["has_api_key"] = bool(raw_key) and raw_key != _PLACEHOLDER_KEY
+    # 占位符 key 不显示掩码（否则用户误以为"已配置"而不填新 key）
+    if raw_key == _PLACEHOLDER_KEY:
+        result["api_key"] = ""
     return result
 
 
