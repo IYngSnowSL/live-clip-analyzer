@@ -77,3 +77,30 @@ async def _transcribe_one(client, file_path: Path, duration: float, language: st
     if text:
         return [{"start": 0.0, "end": duration, "text": text}]
     return []
+
+
+# ---------------- SRT 字幕文件（附属产物，存视频根目录） ----------------
+
+def segments_to_srt(segments: list[dict]) -> str:
+    """ASR 片段转标准 SRT 字幕文本。"""
+    def ts(sec: float) -> str:
+        ms = int(round(float(sec) * 1000))
+        h, rem = divmod(ms, 3600000)
+        m, rem = divmod(rem, 60000)
+        s, milli = divmod(rem, 1000)
+        return f"{h:02d}:{m:02d}:{s:02d},{milli:03d}"
+
+    blocks = []
+    for i, seg in enumerate(segments, 1):
+        text = str(seg.get("text") or "").strip().replace("\n", " ")
+        if not text:
+            continue
+        blocks.append(f"{i}\n{ts(seg['start'])} --> {ts(seg['end'])}\n{text}\n")
+    return "\n".join(blocks)
+
+
+def save_srt(video_path: str | Path, segments: list[dict]) -> Path:
+    """把 ASR 结果写成与视频同目录同名的 .srt 文件，返回保存路径。"""
+    srt_path = Path(video_path).with_suffix(".srt")
+    srt_path.write_text(segments_to_srt(segments), encoding="utf-8-sig")
+    return srt_path

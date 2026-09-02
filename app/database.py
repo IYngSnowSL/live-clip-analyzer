@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     status TEXT DEFAULT 'pending',
     progress INTEGER DEFAULT 0,
     message TEXT DEFAULT '',
+    srt_path TEXT,
     created_at TEXT DEFAULT (datetime('now','localtime')),
     updated_at TEXT DEFAULT (datetime('now','localtime'))
 );
@@ -56,6 +57,10 @@ def init_db(db_path: str | Path) -> None:
     conn = sqlite3.connect(DB_PATH)
     try:
         conn.executescript(SCHEMA)
+        # 迁移：旧库补 srt_path 列（v0.4.0 字幕附属文件）
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(tasks)")]
+        if "srt_path" not in cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN srt_path TEXT")
         conn.commit()
     finally:
         conn.close()

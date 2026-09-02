@@ -21,6 +21,34 @@ class TaskCreate(BaseModel):
     offset_seconds: float = 0.0
 
 
+class BatchCreate(BaseModel):
+    video_paths: list[str]
+    danmaku_path: Optional[str] = None
+    offset_seconds: float = 0.0
+
+
+@router.post("/batch")
+async def create_tasks_batch(payload: BatchCreate):
+    """批量创建任务：一次传入多个视频路径，并行分析。"""
+    if not payload.video_paths:
+        raise HTTPException(400, "请至少提供一个视频路径")
+    if len(payload.video_paths) > 20:
+        raise HTTPException(400, "单次批量最多 20 个视频")
+    tasks = []
+    for vp in payload.video_paths:
+        video_path = Path(vp)
+        if not video_path.exists():
+            raise HTTPException(400, f"视频文件不存在: {vp}")
+        task = models.create_task(
+            video_path=str(video_path.resolve()),
+            danmaku_path=str(Path(payload.danmaku_path).resolve()) if payload.danmaku_path else None,
+            offset_seconds=payload.offset_seconds,
+        )
+        start_task(task["id"])
+        tasks.append(task)
+    return tasks
+
+
 @router.post("")
 async def create_task(payload: TaskCreate):
     video_path = Path(payload.video_path)

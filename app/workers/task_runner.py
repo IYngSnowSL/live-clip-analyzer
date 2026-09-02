@@ -13,7 +13,7 @@ from ..config import load_config
 from ..models import get_task, save_axles, update_task
 from ..services import ffmpeg_utils as ff
 from ..services.ai_client import AIClient
-from ..services.asr import transcribe_chunks
+from ..services.asr import save_srt, transcribe_chunks
 from ..services.axle import build_axles
 
 _background_tasks: set[asyncio.Task] = set()
@@ -89,6 +89,13 @@ async def run_task(task_id: str) -> None:
         if not asr_segments:
             raise ValueError("ASR 转写结果为空，无法打轴")
 
+        # 3.5 字幕附属文件：与视频同目录同名的 .srt（时间戳 + 文本）
+        try:
+            srt_path = save_srt(video_path, asr_segments)
+            update_task(task_id, srt_path=str(srt_path))
+        except Exception as exc:  # noqa: BLE001
+            print(f"[srt] 字幕文件保存失败（不影响打轴）: {exc}")
+
         # 4. 自动打轴（唯一核心）
         update_task(task_id, progress=55, message="LLM 分析字幕、寻找内容点并打轴…")
         axles = await build_axles(ai_client, video_path, asr_segments, cfg.axle)
@@ -103,6 +110,68 @@ async def run_task(task_id: str) -> None:
     except Exception as exc:  # noqa: BLE001
         traceback.print_exc()
         update_task(task_id, status="failed", message=f"{type(exc).__name__}: {exc}")
+    finally:
+        if ai_client is not None:
+            try:
+                await ai_client.close()
+            except Exception:
+                pass
+
+
+# ---------------- 重新打轴（复用 ASR，不重复计费） ----------------
+
+def start_reaxle(task_id: str, overrides: dict | None = None) -> None:
+    """在事件循环中启动重新打轴任务。"""
+    task = asyncio.create_task(run_reaxle(task_id, overrides))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
+async def run_reaxle(task_id: str, overrides: dict | None = None) -> None:
+    """复用 asr.json 缓存重新打轴；可覆盖目标时长，可选精细分窗模式。"""
+    from types import SimpleNamespace
+
+    cfg = load_config()
+    task = get_task(task_id)
+    if not task:
+        return
+    ai_client: AIClient | None = None
+    try:
+        tdir = _task_dir(cfg, task_id)
+        asr_path = tdir / "asr.json"
+        if not asr_path.exists():
+            raise FileNotFoundError("该任务没有 ASR 缓存（asr.json），无法重新打轴")
+        asr_segments = json.loads(asr_path.read_text(encoding="utf-8"))
+        if not asr_segments:
+            raise ValueError("ASR 缓存为空，无法重新打轴")
+        video_path = Path(task["video_path"])
+        if not video_path.exists():
+            raise FileNotFoundError(f"视频文件不存在: {video_path}")
+
+        overrides = {k: v for k, v in (overrides or {}).items() if v is not None}
+        axle_kwargs = dict(cfg.axle)
+        axle_kwargs.update(overrides)
+        fine_mode = bool(overrides.pop("fine_mode", False))
+        if fine_mode:
+            # 精细模式：分窗减半，找更多内容点，切得更细
+            axle_kwargs["window_seconds"] = max(120, int(axle_kwargs.get("window_seconds", 600)) // 2)
+            axle_kwargs["overlap_seconds"] = max(30, int(axle_kwargs.get("overlap_seconds", 60)) // 2)
+        axle_cfg = SimpleNamespace(**axle_kwargs)
+
+        update_task(task_id, status="running", progress=60,
+                    message="重新打轴中（复用 ASR 结果，不重复计费）…")
+        ai_client = AIClient(cfg.ai)
+        axles = await build_axles(ai_client, video_path, asr_segments, axle_cfg)
+        full_axles = [
+            {"task_id": task_id, "axle_index": i, **a}
+            for i, a in enumerate(axles)
+        ]
+        save_axles(task_id, full_axles)
+        update_task(task_id, status="done", progress=100,
+                    message=f"重新打轴完成，共 {len(full_axles)} 个切片轴")
+    except Exception as exc:  # noqa: BLE001
+        traceback.print_exc()
+        update_task(task_id, status="failed", message=f"重新打轴失败: {type(exc).__name__}: {exc}")
     finally:
         if ai_client is not None:
             try:

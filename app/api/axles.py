@@ -40,6 +40,23 @@ class ReviewPayload(BaseModel):
     title: str | None = None
 
 
+class ReaxlePayload(BaseModel):
+    target_min_seconds: float | None = None
+    target_max_seconds: float | None = None
+    fine_mode: bool = False
+
+
+@router.post("/{task_id}/reaxle")
+async def reaxle_task(task_id: str, payload: ReaxlePayload):
+    """任务完成后重新打轴：复用 ASR 结果（不重复计费），可改目标时长，可选精细分窗。"""
+    task = _get_task_or_404(task_id)
+    if task.get("status") in ("running", "pending"):
+        raise HTTPException(400, "任务正在运行中，请等待完成后再重新打轴")
+    from ..workers.task_runner import start_reaxle
+    start_reaxle(task_id, payload.model_dump())
+    return {"ok": True}
+
+
 @router.put("/{task_id}/axles/{axle_id}/review")
 async def review_axle(task_id: str, axle_id: int, payload: ReviewPayload):
     _get_task_or_404(task_id)

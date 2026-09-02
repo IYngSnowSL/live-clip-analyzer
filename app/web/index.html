@@ -13,24 +13,25 @@
   <!-- ═══════════ 第一页：首页 ═══════════ -->
   <div class="home" id="home">
     <div class="home-center" id="home-center">
-      <div class="home-logo">🎬</div>
-      <h1 class="home-title">直播切片分析</h1>
-      <p class="home-sub">输入录播视频，自动打轴——找出所有值得切的内容点与精确时间</p>
+    <div class="home-logo">🎬</div>
+    <h1 class="home-title">直播切片分析</h1>
+    <p class="home-sub">输入录播视频，自动打轴——找出所有值得切的内容点与精确时间</p>
 
-      <div class="input-bar">
-        <span class="input-icon">🎞️</span>
-        <input type="text" id="video_path" placeholder="视频路径，如 D:\videos\live_001.flv" required autocomplete="off" />
-        <button type="button" class="btn-browse" data-target="video_path" data-filter="video" title="浏览视频文件">📂</button>
-      </div>
-      <div class="input-bar">
-        <span class="input-icon">💬</span>
-        <input type="text" id="danmaku_path" placeholder="弹幕 XML 路径（可选）" autocomplete="off" />
-        <input type="number" id="offset_seconds" class="offset-input" title="弹幕偏移（秒）" step="0.5" value="0" />
-        <button type="button" class="btn-browse" data-target="danmaku_path" data-filter="xml" title="浏览 XML 文件">📂</button>
-      </div>
+    <div class="input-bar">
+      <span class="input-icon">🎞️</span>
+      <input type="text" id="video_path" placeholder="视频路径，如 D:\videos\live_001.flv" required autocomplete="off" />
+      <button type="button" class="btn-browse" data-target="video_path" data-filter="video" title="浏览视频文件（可多选）">📂</button>
+    </div>
+    <div id="video-chips" class="video-chips hidden"></div>
+    <div class="input-bar">
+      <span class="input-icon">💬</span>
+      <input type="text" id="danmaku_path" placeholder="弹幕 XML 路径（可选）" autocomplete="off" />
+      <input type="number" id="offset_seconds" class="offset-input" title="弹幕偏移（秒）" step="0.5" value="0" />
+      <button type="button" class="btn-browse" data-target="danmaku_path" data-filter="xml" title="浏览 XML 文件">📂</button>
+    </div>
 
-      <button class="btn-start" id="btn-start">开始打轴</button>
-      <div class="home-hint">需要先在本机配置 AI 接口（右上角 ⚙️）</div>
+    <button class="btn-start" id="btn-start">开始打轴</button>
+    <div class="home-hint">需要先在本机配置 AI 接口（右上角 ⚙️）</div>
     </div>
 
     <!-- 左下：任务列表正方格 -->
@@ -74,6 +75,7 @@
             </div>
             <div class="actions">
               <button id="btn-refresh" class="ghost">刷新</button>
+              <button id="btn-reaxle" class="ghost">重新打轴</button>
               <a id="link-video" class="btn ghost" target="_blank">预览视频</a>
               <a id="link-csv" class="btn ghost" target="_blank">导出 CSV</a>
             </div>
@@ -81,6 +83,7 @@
               <label class="check-label"><input type="checkbox" id="export-accurate" /> 精切模式（重编码）</label>
               <button id="btn-export-all" class="btn btn-primary">批量导出全部</button>
             </div>
+            <div id="srt-hint" class="srt-hint hidden"></div>
           </div>
           <div id="report-status" class="report-status"></div>
 
@@ -88,9 +91,15 @@
             <div class="section-head">
               <h3>切片轴</h3>
               <div class="filter-row">
+                <button id="btn-score-help" class="ghost score-help-btn" title="评分说明">ℹ️ 评分说明</button>
                 <label for="score-filter">最低评分</label>
                 <input type="number" id="score-filter" value="0" min="0" max="10" step="0.5" />
               </div>
+            </div>
+            <div id="score-help" class="score-help hidden">
+              评分 <b>0~10</b> 由 AI 根据字幕内容评定的「值得切的精彩程度」：
+              <b>9~10</b> 顶级名场面（必切）｜<b>7~8</b> 高光 / 爆点 / 情绪拉满｜<b>5~6</b> 有趣内容（及格线）；
+              低于 5 分不输出。分数仅作排序与筛选参考，最终以你的复核为准。
             </div>
             <div id="axles-container" class="axles"></div>
           </div>
@@ -105,6 +114,36 @@
   </div>
 
   <!-- ═══════════ 模态框 ═══════════ -->
+
+  <div id="reaxle-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3>重新打轴</h3>
+      <div class="cfg-hint">
+        复用已完成的语音转写结果重新切轴，<b>不重复计费</b>。
+        可调整目标时长；勾选「精细模式」会以更细分窗重新找内容点（需重新调用 AI，少量费用），切出更多更细的轴。
+      </div>
+      <div class="form-row two-col">
+        <div>
+          <label>目标最短（秒）</label>
+          <input type="number" id="reaxle-min" min="5" step="5" />
+        </div>
+        <div>
+          <label>目标最长（秒）</label>
+          <input type="number" id="reaxle-max" min="30" step="30" />
+        </div>
+      </div>
+      <div class="form-row">
+        <label class="check-label">
+          <input type="checkbox" id="reaxle-fine" />
+          精细模式（分窗减半，切出更多更细的轴）
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-confirm-reaxle">开始重新打轴</button>
+        <button id="btn-cancel-reaxle" class="ghost">取消</button>
+      </div>
+    </div>
+  </div>
 
   <div id="edit-modal" class="modal hidden">
     <div class="modal-content">
@@ -136,9 +175,13 @@
       <h3 id="file-modal-title">选择文件</h3>
       <div class="fb-path" id="fb-path">加载中…</div>
       <div class="fb-list" id="fb-list"></div>
-      <div class="modal-actions">
-        <button id="btn-fb-up" class="ghost">↑ 上一级</button>
-        <button id="btn-fb-cancel" class="ghost">取消</button>
+      <div class="fb-footer">
+        <span id="fb-selected-count" class="muted">勾选文件可多选</span>
+        <div class="fb-footer-actions">
+          <button id="btn-fb-up" class="ghost">↑ 上一级</button>
+          <button id="btn-fb-confirm" class="btn btn-primary hidden">选择已勾选文件</button>
+          <button id="btn-fb-cancel" class="ghost">取消</button>
+        </div>
       </div>
     </div>
   </div>

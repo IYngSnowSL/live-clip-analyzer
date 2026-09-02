@@ -110,6 +110,13 @@ function renderReport(task) {
   $("link-csv").href = `/api/tasks/${task.id}/axles.csv`;
   $("report-card").classList.remove("hidden");
   $("win-empty").classList.add("hidden");
+  const srtBox = $("srt-hint");
+  if (task.srt_path) {
+    srtBox.textContent = `📝 字幕文件已保存至：${task.srt_path}`;
+    srtBox.classList.remove("hidden");
+  } else {
+    srtBox.classList.add("hidden");
+  }
 }
 
 function renderAxles(axles) {
@@ -269,17 +276,85 @@ function startPolling(taskId) {
   }, 3000);
 }
 
+/* ---------------- 重新打轴 ---------------- */
+
+function openReaxle() {
+  if (!currentTaskId) return;
+  $("reaxle-min").value = 30;
+  $("reaxle-max").value = 3600;
+  $("reaxle-fine").checked = false;
+  $("reaxle-modal").classList.remove("hidden");
+}
+
+async function confirmReaxle() {
+  const payload = {
+    target_min_seconds: Number($("reaxle-min").value) || 30,
+    target_max_seconds: Number($("reaxle-max").value) || 3600,
+    fine_mode: $("reaxle-fine").checked,
+  };
+  if (payload.target_min_seconds >= payload.target_max_seconds) {
+    alert("目标最短必须小于目标最长");
+    return;
+  }
+  try {
+    await api(`/api/tasks/${currentTaskId}/reaxle`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    $("reaxle-modal").classList.add("hidden");
+    $("report-status").textContent = "重新打轴进行中…（复用 ASR 结果，不重复计费）";
+    startPolling(currentTaskId);
+  } catch (err) {
+    alert("重新打轴失败：" + err.message);
+  }
+}
+
+/* ---------------- 批量多选（chips） ---------------- */
+
+let selectedVideos = []; // [{path, name}]
+
+function renderChips() {
+  const box = $("video-chips");
+  if (!selectedVideos.length) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  box.classList.remove("hidden");
+  box.innerHTML = selectedVideos.map((v, i) =>
+    `<span class="chip" title="${escapeAttr(v.path)}">${escapeHtml(v.name)}<button class="chip-del" data-i="${i}" title="移除">×</button></span>`
+  ).join("");
+  document.querySelectorAll(".chip-del").forEach((b) => {
+    b.addEventListener("click", () => {
+      selectedVideos.splice(Number(b.dataset.i), 1);
+      renderChips();
+    });
+  });
+}
+
+function addVideoChips(paths) {
+  for (const p of paths) {
+    if (!selectedVideos.some((v) => v.path === p)) {
+      selectedVideos.push({ path: p, name: p.split(/[\\/]/).pop() });
+    }
+  }
+  renderChips();
+}
+
 /* ---------------- 文件浏览器 ---------------- */
 
 let fbPath = "";
 let fbParent = "";
 let fbTarget = null;
 let fbFilter = "all";
+let fbSelected = new Map(); // path -> name
 
 function openFileBrowser(targetId, filter) {
   fbTarget = targetId;
   fbFilter = filter || "all";
-  const titles = { video: "选择视频文件", xml: "选择弹幕 XML 文件", all: "选择文件" };
+  fbSelected.clear();
+  updateFbFooter();
+  const titles = { video: "选择视频文件（可勾选多个）", xml: "选择弹幕 XML 文件", all: "选择文件" };
   $("file-modal-title").textContent = titles[fbFilter] || "选择文件";
   $("file-modal").classList.remove("hidden");
   const cur = ($(targetId).value || "").trim();
@@ -310,6 +385,14 @@ async function loadFileList(path) {
   }
 }
 
+function updateFbFooter() {
+  const n = fbSelected.size;
+  $("fb-selected-count").textContent = n
+    ? `已勾选 ${n} 个文件`
+    : "点击文件名 = 选单个；勾选 = 多选";
+  $("btn-fb-confirm").classList.toggle("hidden", n === 0);
+}
+
 function renderFileList(data) {
   $("fb-path").textContent = fbPath || "我的电脑";
   $("btn-fb-up").disabled = !fbPath;
@@ -318,7 +401,8 @@ function renderFileList(data) {
     parts.push(`<div class="fb-item fb-dir" data-path="${escapeAttr(d.path)}"><span class="fb-icon">📁</span><span class="fb-name">${escapeHtml(d.name)}</span></div>`);
   });
   (data.files || []).forEach((f) => {
-    parts.push(`<div class="fb-item fb-file" data-path="${escapeAttr(f.path)}"><span class="fb-icon">📄</span><span class="fb-name">${escapeHtml(f.name)}</span><span class="fb-size">${formatSize(f.size)}</span></div>`);
+    const checked = fbSelected.has(f.path) ? " checked" : "";
+    parts.push(`<div class="fb-item fb-file" data-path="${escapeAttr(f.path)}"><input type="checkbox" class="fb-check" data-path="${escapeAttr(f.path)}"${checked} /><span class="fb-icon">📄</span><span class="fb-name">${escapeHtml(f.name)}</span><span class="fb-size">${formatSize(f.size)}</span></div>`);
   });
   if (!parts.length) {
     $("fb-list").innerHTML = `<div class="muted">（空目录，或没有匹配类型的文件）</div>`;
@@ -331,9 +415,28 @@ function renderFileList(data) {
       if (el.classList.contains("fb-dir")) {
         loadFileList(p);
       } else {
-        $(fbTarget).value = p;
+        // 单文件直接回填
+        fbSelected.clear();
         $("file-modal").classList.add("hidden");
+        if (fbTarget === "video_path") {
+          addVideoChips([p]);
+        } else {
+          $(fbTarget).value = p;
+        }
       }
+    });
+  });
+  document.querySelectorAll(".fb-check").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const p = el.dataset.path;
+      if (el.checked) {
+        const nameEl = el.closest(".fb-item").querySelector(".fb-name");
+        fbSelected.set(p, nameEl ? nameEl.textContent : p);
+      } else {
+        fbSelected.delete(p);
+      }
+      updateFbFooter();
     });
   });
 }
@@ -498,20 +601,39 @@ async function init() {
   });
 
   $("btn-start").addEventListener("click", async () => {
-    const payload = {
-      video_path: $("video_path").value.trim(),
-      danmaku_path: $("danmaku_path").value.trim() || null,
-      offset_seconds: Number($("offset_seconds").value) || 0,
-    };
-    if (!payload.video_path) {
-      alert("请先填写视频路径");
-      return;
-    }
+    const danmaku = $("danmaku_path").value.trim() || null;
+    const offset = Number($("offset_seconds").value) || 0;
     const btn = $("btn-start");
     const oldText = btn.textContent;
     btn.disabled = true;
     btn.textContent = "创建中…";
     try {
+      if (selectedVideos.length) {
+        // 批量：一次创建 N 个任务并行分析
+        const tasks = await api("/api/tasks/batch", {
+          method: "POST",
+          body: JSON.stringify({
+            video_paths: selectedVideos.map((v) => v.path),
+            danmaku_path: danmaku,
+            offset_seconds: offset,
+          }),
+        });
+        selectedVideos = [];
+        renderChips();
+        await loadTasks();
+        await openReport(tasks[0].id);
+        alert(`已创建 ${tasks.length} 个任务，正在并行分析（任务列表可查看进度）`);
+        return;
+      }
+      const payload = {
+        video_path: $("video_path").value.trim(),
+        danmaku_path: danmaku,
+        offset_seconds: offset,
+      };
+      if (!payload.video_path) {
+        alert("请先填写视频路径，或通过 📂 浏览选择");
+        return;
+      }
       const task = await api("/api/tasks", {
         method: "POST",
         body: JSON.stringify(payload),
@@ -536,6 +658,26 @@ async function init() {
     await exportAxleIds(null, $("btn-export-all"));
   });
   $("btn-cancel-review").addEventListener("click", () => $("edit-modal").classList.add("hidden"));
+  $("btn-reaxle").addEventListener("click", openReaxle);
+  $("btn-confirm-reaxle").addEventListener("click", confirmReaxle);
+  $("btn-cancel-reaxle").addEventListener("click", () => $("reaxle-modal").classList.add("hidden"));
+  $("reaxle-modal").addEventListener("click", (e) => {
+    if (e.target === $("reaxle-modal")) $("reaxle-modal").classList.add("hidden");
+  });
+  $("btn-score-help").addEventListener("click", () => {
+    $("score-help").classList.toggle("hidden");
+  });
+  $("btn-fb-confirm").addEventListener("click", () => {
+    const paths = [...fbSelected.keys()];
+    fbSelected.clear();
+    updateFbFooter();
+    $("file-modal").classList.add("hidden");
+    if (fbTarget === "video_path") {
+      addVideoChips(paths);
+    } else {
+      $(fbTarget).value = paths[0] || "";
+    }
+  });
   $("btn-save-review").addEventListener("click", async () => {
     const id = $("edit-id").value;
     const payload = {
