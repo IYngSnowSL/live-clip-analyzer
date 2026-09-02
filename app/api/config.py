@@ -73,6 +73,18 @@ def _set_dotted(target: dict, dotted: str, value: Any) -> None:
     node[parts[-1]] = value
 
 
+def _unset_dotted(target: dict, dotted: str) -> None:
+    """删除嵌套键（用于显式清空 API key 类字段，使其回退到上级配置）。"""
+    node = target
+    parts = dotted.split(".")
+    for part in parts[:-1]:
+        nxt = node.get(part)
+        if not isinstance(nxt, dict):
+            return
+        node = nxt
+    node.pop(parts[-1], None)
+
+
 def _local_config_path() -> Path:
     return PROJECT_ROOT / "config.local.yaml"
 
@@ -124,11 +136,17 @@ async def update_config(payload: ConfigUpdate) -> dict:
 
     data = payload.model_dump(exclude_none=True)
 
-    # api_key 类字段：仅当传入的是非掩码、非占位符的新值才更新
+    # api_key 类字段：未传 → 不变更；掩码/占位符 → 不变更；新值 → 写入；显式传空 → 清空
     for key_field in _KEY_FIELDS:
+        if key_field not in data:
+            continue
         key = (data.get(key_field) or "").strip()
-        if key and "*" not in key and key != _PLACEHOLDER_KEY:
+        if "*" in key or key == _PLACEHOLDER_KEY:
+            continue
+        if key:
             _set_dotted(local, _FIELD_MAP[key_field], key)
+        else:
+            _unset_dotted(local, _FIELD_MAP[key_field])
 
     for flat, dotted in _FIELD_MAP.items():
         if flat in _KEY_FIELDS or flat not in data:

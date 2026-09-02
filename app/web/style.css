@@ -772,6 +772,18 @@ body.view-report .window {
   line-height: 1;
 }
 
+/* 设置弹窗：保存/取消按钮吸底，始终可见（不随内容滚出视口） */
+#config-modal .modal-content { display: flex; flex-direction: column; }
+#config-modal .modal-actions {
+  position: sticky;
+  bottom: 0;
+  background: var(--surface);
+  padding: 12px 0 4px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  z-index: 2;
+}
+
 /* ---------------- 模型下拉选择 ---------------- */
 .model-select { position: relative; flex: 1; display: flex; align-items: stretch; }
 .model-select .ms-input { flex: 1; }

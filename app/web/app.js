@@ -913,7 +913,11 @@ async function testConnection(kind) {
         }
       }
     } else {
-      statusBox.textContent = "❌ " + (result.detail || "无法连接，请检查地址与密钥");
+      let msg = "❌ " + (result.detail || "无法连接，请检查地址与密钥");
+      if (String(result.detail || "").includes("401") && !isGlobal) {
+        msg += "｜密钥可能无效——可清空本组的 API Key 后保存，将回退使用全局密钥";
+      }
+      statusBox.textContent = msg;
       statusBox.classList.add("fail");
     }
   } catch (err) {
