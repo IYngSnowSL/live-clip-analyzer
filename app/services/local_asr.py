@@ -84,7 +84,6 @@ def _build_cmd(bin_path: str, model_path: str, device: str, compute: str,
         "--condition_on_previous_text", "false",
         "--beep_off",
         "--print_progress",
-        "--model_preload",                 # 预加载模型（批量模式更顺滑）
     ]
     if compute and compute not in ("default", "auto"):
         cmd += ["--compute_type", compute]  # 默认交给 exe 自行选择
