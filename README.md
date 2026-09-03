@@ -1,120 +1,125 @@
-# 🎬 直播切片分析 · Live Clip Analyzer
+# 🎬 live-clip-analyzer · 直播切片自动打轴工具
 
-> **📢 声明**：本软件代码内容全部由 AI 生成，依据 [MIT License](LICENSE) 开源。
+> **📢 郑重声明**
+> 本软件代码内容全部由 AI 生成。
 
-一款**面向零基础用户的直播录播自动打轴工具**：输入录播视频，AI 自动找出所有值得剪的片段，给出每个片段的**精确起止时间、标题、推荐理由与评分**。你只需要挑、微调、导出，剩下交给剪辑软件。
-
-```
-录播视频（FLV / MP4）
-      │
-      ├─① 语音自动转文字（ASR）
-      ├─② AI 找内容点并打轴（标题 / 理由 / 评分 / 起止时间）
-      ├─③ 静音点精修（片段头尾干净）
-      ▼
-  ✂️ 切片轴清单 → 导出切片视频 / CSV 清单（对照剪辑软件剪）
-```
+> v0.5.6 ｜ 本地运行 ｜ Windows / Linux / macOS ｜ [MIT License](LICENSE)
 
 ---
 
-## 第一步：准备工作（只需一次）
+## 这是什么？
 
-### 1. 安装 Python
+一款**本地直播录像自动打轴工具**：输入录播视频，AI 自动分析字幕，找出所有值得切的内容点，
+输出每个可切片片段的**精确起止时间、标题、推荐理由与评分**——把"反复拖进度条找片段"的活交给 AI，
+切片生产者只需挑选、微调、导出。
+
+```
+录播视频（FLV / MP4）
+    │
+    ├─① ASR 全量语音转写 ────────────► 📝 SRT 字幕文件（存视频同目录 [日期]_视频名 文件夹）
+    │
+    ├─② LLM 分窗找内容点并初步打轴
+    │
+    ├─③ 内容点合并 + 长度约束（目标 30 秒 ~ 1 小时）
+    │
+    ├─④ 静音点精修（ffmpeg silencedetect，边界干净不留杂音）
+    │
+    ▼
+   ✂️ 切片轴清单：精确起止 + 标题 + 理由（带时间戳举例）+ 评分
+    │
+    ├─ 人工复核微调 ──► 🎬 导出切片（快切 / 精切）
+    └─ 📄 CSV 导出 ──► 对照剪辑软件打轴
+```
+
+## ✨ 功能特性
+
+| 功能 | 说明 |
+|---|---|
+| **自动打轴** | 唯一核心功能：AI 从字幕中找出名场面/趣点/高光/爆点，给出精确起止时间与内容说明 |
+| **SRT 字幕文件** | ASR 完成后自动生成：无表情、句读+情感标点（无句号），可直接插入剪辑软件 |
+| **批量处理** | 文件浏览器多选视频，一次创建多个任务并行分析 |
+| **重新打轴** | 复用转写结果**不重复计费**，可改目标时长，可选精细分窗模式切得更细 |
+| **自动弹幕关联** | 自动查找视频同目录同名 `.xml` 弹幕文件并关联 |
+| **人工复核** | 微调每个轴的起止时间与标题，导出以复核值为准 |
+| **CSV 导出** | 轴清单（序号/起止/时长/标题/理由/评分），直接对照剪辑软件打轴 |
+| **切片导出** | 无损快切（`-c copy`）或重编码精切（精确到帧） |
+| **评分说明** | 0~10 分含义图例（9~10 顶级名场面 / 7~8 高光爆点 / 5~6 有趣） |
+| **一键复制** | 单轴复制时间标记；「复制全部」导出 **TSV 表格**（粘贴进 Excel / 共享表格直接成表） |
+| **弹幕高峰标注** | 关联弹幕后每个轴标注弹幕密度峰值时刻（🔥 可点击跳转视频） |
+| **字幕搜索** | 字幕页搜索框：匹配条目列表（带时间戳跳转）+ 全文高亮 |
+| **字幕页** | WebUI 内在线预览完整字幕文件 |
+
+## 🚀 新手教程（零基础，从未配置过环境）
+
+> 适合第一次接触这类软件的 Windows 用户。照着做，30 分钟内跑通第一次打轴。
+
+### 第 1 步：安装 Python
 
 1. 打开 <https://www.python.org/downloads/>，点黄色「Download Python」按钮下载
-2. 双击安装包，**务必勾选最底部的 `Add python.exe to PATH`**，再点 Install Now 一路下一步
+2. 双击安装包，**务必勾选最底部的 `Add python.exe to PATH`**，然后一路 Install Now
 
-### 2. 获取本软件
+### 第 2 步：获取本软件
 
 1. 打开 <https://github.com/IYngSnowSL/live-clip-analyzer>
-2. 点绿色 **Code** 按钮 → **Download ZIP**，下载后解压到任意文件夹（例如 `D:\live-clip-analyzer`）
+2. 点绿色 **Code** 按钮 → **Download ZIP**，下载后解压到任意文件夹（如 `D:\live-clip-analyzer`）
 
-### 3. 安装依赖（黑窗口，一次就好）
+### 第 3 步：安装依赖
 
-1. 打开解压出来的文件夹，**点击窗口顶部地址栏，输入 `cmd` 后回车**（黑窗口会直接定位到本文件夹）
-2. 在黑窗口输入以下命令并回车，等待出现 `Successfully installed ...`：
+1. 打开解压出来的文件夹，**点击窗口顶部地址栏，输入 `cmd` 回车**（黑窗口会定位到本文件夹）
+2. 输入以下命令回车，等待出现 `Successfully installed ...`：
 
 ```bat
 pip install -r requirements.txt
 ```
 
-### 4. 安装 FFmpeg（处理视频必需）
+### 第 4 步：安装 FFmpeg
 
-- **方法一（推荐，Win10/11）**：在上面的黑窗口输入 `winget install ffmpeg` 回车，完成后**关掉黑窗口重新开一个**
-- **方法二**：去 <https://ffmpeg.org/download.html> 下载 Windows 版，解压后把里面的 `bin` 文件夹路径加入系统 PATH（网上搜「ffmpeg 加入环境变量」有图文教程）
+- **方法一（推荐，Win10/11）**：在黑窗口输入 `winget install ffmpeg` 回车，装完后**关掉黑窗口重开一个**
+- **方法二**：去 <https://ffmpeg.org/download.html> 下载 Windows 版，解压后把 `bin` 文件夹加入系统 PATH（搜「ffmpeg 加入环境变量」有图文教程）
 
-### 5. 准备 AI 接口（打轴的大脑，必须）
+### 第 5 步：准备 AI 接口（打轴必需）
 
-本软件用 AI 分析字幕找内容点，需要一个 **OpenAI 兼容接口的 API Key**。推荐国内直连的**硅基流动**（一家通吃，价格低）：
+打轴靠 AI 分析字幕，需要一个 **OpenAI 兼容接口的 API Key**。推荐国内直连的**硅基流动**：
 
-1. 打开 <https://cloud.siliconflow.cn> 注册并登录
-2. 左侧菜单「API 密钥」→「新建 API 密钥」→ 复制那串 `sk-` 开头的内容（**妥善保存，只显示一次**）
+1. 打开 <https://cloud.siliconflow.cn> 注册登录
+2. 左侧「API 密钥」→「新建 API 密钥」→ 复制 `sk-` 开头的内容（**只显示一次，请保存好**）
 
-> 💡 有 NVIDIA 显卡想完全免费转写？先按上面步骤跑通，再看文末「附录 A：启用免费本地转写」。
+> 💡 有 NVIDIA 显卡想转写完全免费？先跑通，再看文末「附录：启用免费本地转写」。
 
----
+### 第 6 步：启动软件
 
-## 第二步：启动软件
+1. 打开软件文件夹，地址栏输入 `cmd` 回车
+2. 输入 `python run.py` 回车，看到 `Uvicorn running on http://127.0.0.1:8000` 即成功（黑窗口保持开着）
+3. 浏览器打开 **<http://127.0.0.1:8000>**
 
-1. 再次打开软件文件夹，地址栏输入 `cmd` 回车
-2. 输入以下命令回车：
+### 第 7 步：第一次配置（点右上角 ⚙️）
 
-```bat
-python run.py
-```
+1. 「接口地址 base_url」填 `https://api.siliconflow.cn/v1`
+2. 「API Key」粘贴第 5 步复制的密钥
+3. 点「**测试连接**」→ 看到 ✅ 与模型列表即成功
+4. 「文本模型」填 `Qwen/Qwen2.5-72B-Instruct`（或点 ▾ 选择）
+5. 「ASR 转写引擎」：新手先选**云端**；ASR 模型填 `FunAudioLLM/SenseVoiceSmall`
+6. 点「保存」
 
-3. 看到 `Uvicorn running on http://127.0.0.1:8000` 就是启动成功
-4. 浏览器打开 **<http://127.0.0.1:8000>**（黑窗口保持开着别关）
+### 第 8 步：第一次打轴
 
----
+1. 首页输入录播文件完整路径（点 **📂** 浏览选择，可多选批量）
+2. 点「**开始打轴**」，左下角任务列表看进度：提取音频 → 语音转写 → AI 打轴
+3. 任务变「完成」后点它查看结果（各字段含义与导出操作见下方「使用教程」）
 
-## 第三步：第一次配置
-
-1. 点页面**右上角 ⚙️**打开设置
-2. 「接口地址 base_url」填：`https://api.siliconflow.cn/v1`
-3. 「API Key」粘贴你在第一步第 5 节复制的密钥
-4. 点旁边的「**测试连接**」→ 看到 ✅ 和模型列表即成功
-5. 「文本模型」输入 `Qwen/Qwen2.5-72B-Instruct`（或点 ▾ 从列表里选）
-6. 「ASR 转写引擎」：新手先选**云端**；ASR 模型填 `FunAudioLLM/SenseVoiceSmall`
-7. 点「保存」
-
----
-
-## 第四步：第一次打轴
-
-1. 首页视频路径输入框里输入录播文件完整路径（点 **📂** 可以直接浏览选择，可多选批量处理）
-2. 点「**开始打轴**」
-3. 左下角「任务列表」实时显示进度：提取音频 → 语音转写 → AI 打轴
-4. 任务变成「完成」后，点击该任务查看结果
-
----
-
-## 第五步：看懂结果、复核与导出
-
-- 每个**轴**就是一个可剪片段，显示：`[开始 - 结束]` 时间、标题、推荐理由、评分（9~10 顶级名场面，7~8 高光爆点，5~6 有趣）
-- 点时间可**跳转视频预览**确认内容；「📋 复制」一键复制时间标记
-- 不满意就点「**复核打轴**」微调起止时间/标题，或「**重新打轴**」改目标时长重跑（复用转写结果不重复计费）
-- **导出**：
-  - `导出 CSV`：带时间/标题/理由/评分的表格，直接对照剪辑软件打轴
-  - `批量导出全部`：直接导出剪好的视频文件（勾「精切模式」帧级精确但慢；不勾无损快切、秒级完成）
-
----
-
-## 常见问题（FAQ）
+### 常见问题（FAQ）
 
 | 现象 | 解决 |
 |---|---|
-| 黑窗口提示 `python 不是内部或外部命令` | Python 重装并勾选 `Add python.exe to PATH`，装完**重开黑窗口** |
-| 启动报找不到 `ffmpeg` / `ffprobe` | 回到第一步第 4 节安装 FFmpeg，重开黑窗口 |
-| 「测试连接」失败 | 检查 base_url 末尾是 `/v1`、密钥无空格；公司网络可能需要代理 |
-| 浏览器打不开 127.0.0.1:8000 | 黑窗口是否还开着？`Uvicorn running` 那行出现了吗 |
-| 提示端口 8000 被占用 | 关掉上一个还在运行的黑窗口（或重启电脑） |
-| 转写很慢 | 云端引擎取决于网络；有 NVIDIA 显卡请启用本地转写（附录 A） |
-| 没有独立显卡能用吗 | 能。ASR 引擎保持「云端」即可，所有功能不受影响 |
-| 分析结果不满意 | 点「重新打轴」调整目标时长，或开启「精细模式」切出更多更细的轴 |
+| 提示 `python 不是内部或外部命令` | 重装 Python 并勾选 `Add python.exe to PATH`，装完**重开黑窗口** |
+| 启动报找不到 `ffmpeg` / `ffprobe` | 回到第 4 步安装 FFmpeg，重开黑窗口 |
+| 「测试连接」失败 | 检查地址末尾是 `/v1`、密钥无多余空格；公司网络可能需要代理 |
+| 浏览器打不开 127.0.0.1:8000 | 黑窗口是否还开着？`Uvicorn running` 出现没有 |
+| 提示端口 8000 被占用 | 关掉上一个还在运行的黑窗口，或重启电脑 |
+| 转写很慢 | 云端引擎取决于网络；有 NVIDIA 显卡请启用本地转写（见附录） |
+| 没有独立显卡能用吗 | 能。ASR 引擎保持「云端」即可，全部功能不受影响 |
 
----
-
-## 附录 A：启用免费本地转写（可选，需 NVIDIA 显卡）
+### 附录：启用免费本地转写（可选，需 NVIDIA 显卡）
 
 本软件的本地转写复用**卡卡字幕助手（VideoCaptioner）**的引擎与模型，实现零 API 费用：
 
@@ -123,40 +128,201 @@ python run.py
 3. 回到本软件设置页：ASR 引擎选「**本地 faster-whisper（CUDA 加速）**」，保存
 4. 本地模型路径默认已自动填好（`D:\AdobE\VideoCaptioner\AppData\models\faster-whisper-large-v2`），一般无需修改
 
-本地转写的高级参数（显存紧张改 `int8_float16`、专名梗词加热词等）在 `config.yaml` 的 `asr:` 段调整，文件内有中文注释说明。
+本地转写的高级参数（显存紧张改 `int8_float16`、专名梗词加热词等）在 `config.yaml` 的
+`asr:` 段调整，文件内有中文注释说明。
 
----
+## 🚀 快速开始
 
-## 附录 B：高级配置速览
+### 环境要求
 
-所有配置都能在设置页完成；如需更细控制，编辑软件文件夹里的 `config.yaml`（真密钥请写进 `config.local.yaml`，不会被上传到 git）：
+- Python 3.10+
+- FFmpeg（`ffmpeg` / `ffprobe` 已加入 PATH）
+- OpenAI 兼容 API：**LLM**（找内容点，必需）
+- ASR 二选一：本地 faster-whisper（免费，NVIDIA 显卡可 CUDA 加速）/ 云端 OpenAI 兼容 ASR API
 
-```yaml
-ai:
-  base_url: https://api.siliconflow.cn/v1   # 打轴 AI 接口
-  llm_model: Qwen/Qwen2.5-72B-Instruct     # 文本模型（打轴核心）
-  asr_model: FunAudioLLM/SenseVoiceSmall   # 云端 ASR 模型
+### 安装
 
-asr:
-  engine: local            # local=本地免费转写 / api=云端 ASR
-  local_device: cuda       # NVIDIA 显卡用 cuda；没有就写 cpu
-  local_batched: true      # 批解码加速（默认开）
-  local_hotwords: ""       # 热词：专名/梗词空格分隔，可提高识别率
-
-axle:
-  target_min_seconds: 30   # 目标最短片段（秒）
-  target_max_seconds: 3600 # 目标最长片段（秒）
+```bat
+cd /d D:\GitRepository\live-clip-analyzer
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
----
+本地 ASR 引擎（可选，不用云端 ASR 时使用）：
+
+```bat
+:: 需要外部独立程序 faster-whisper-xxl.exe（whisper-standalone-win，自带 CUDA 栈）
+:: 最简单的方式：安装卡卡字幕助手 VideoCaptioner 后直接复用其已下载的程序与模型，
+:: 本软件会自动探测 D:\AdobE\VideoCaptioner\resource\bin\Faster-Whisper-XXL\faster-whisper-xxl.exe
+:: 也可手动指定：config.yaml 的 asr.local_whisper_bin 填写 exe 路径
+```
+
+模型文件放到 `config.yaml` 里 `asr.local_model_path` 指向的目录（默认直接复用
+卡卡字幕助手已下载的 `faster-whisper-large-v2` 模型目录）。转写以子进程方式调用
+独立程序，崩溃/卡死不会影响本服务。
+
+### 配置 AI 接口
+
+运行后点击页面右上角 **⚙️ 设置**：
+
+1. 填入 `base_url` 与 `API Key`（设置页顶部有**带日期的 API 推荐**，首选硅基流动一家通吃）
+2. 点「测试连接」——连通后模型名输入框即可**下拉选择**供应商的全部模型
+3. 「高级设置」支持三个模型（文本/视觉/ASR）**各自独立接口与密钥**（留空继承全局）
+
+配置读取顺序（后者覆盖前者）：内置默认值 < `config.yaml` < `config.local.yaml`（放真 key，已 gitignore）< `LCA_*` 环境变量。
+
+### 运行
+
+```bat
+python run.py
+```
+
+浏览器打开 **http://127.0.0.1:8000**。
+
+## 🧭 使用教程
+
+### 第一步：创建任务
+
+首页中央填入视频路径（📂 浏览可**勾选多个视频**批量处理，选择后以标签形式展示、可逐个移除），
+点击「开始打轴」。
+
+> 💡 未填弹幕时，会自动查找视频同目录的同名 `.xml` 弹幕文件并关联。
+
+### 第二步：等待分析
+
+任务在左下角「任务列表」显示进度。流程：提取音频 → ASR 转写（生成字幕文件）→ LLM 找内容点 → 打轴。
+
+### 第三步：查看轴
+
+分析完成后点击「查看」，报告窗口按评分从高到低展示全部切片轴：
+
+| 字段 | 含义 |
+|---|---|
+| 时间 | `[HH:MM:SS - HH:MM:SS]`，点击跳转视频预览 |
+| 标题 | 切片标题建议 |
+| 理由 | 为什么值得切，**含片段内具体时间戳与原话举例** |
+| 评分 | 0~10（点「ℹ️ 评分说明」看图例），可按最低评分筛选 |
+
+窗口内「📝 字幕文件」标签页可在线查看完整 SRT 字幕。
+
+### 第四步：复核、重新打轴与分享
+
+- **复核打轴**：微调起止时间与标题，导出以复核值为准
+- **重新打轴**：复用已转写结果**不重复计费**——可改目标时长（30 秒~1 小时），
+  勾选「精细模式」以更细分窗切出更多更细的轴（会重新调用 AI，少量费用）
+- **一键复制**：单轴「复制」按钮复制时间标记；顶部「📋 复制全部」以
+  **TSV 表格格式**复制整份轴清单——粘贴进 Excel / 飞书 / 腾讯文档直接成表，方便分享
+- **弹幕高峰**：任务关联弹幕时，每个轴标注弹幕密度最高的时刻（🔥 可点击跳视频确认）
+
+### 第五步：导出
+
+- **CSV**：右上角「导出 CSV」→ 对照剪辑软件打轴
+- **切片**：单轴「导出此切片」/「批量导出全部」；勾选「精切模式」重编码精确到帧，
+  不勾则无损快切（秒级，起点对齐关键帧）
+
+## ⚙️ 关键配置
+
+```yaml
+# config.yaml（真 key 请放 config.local.yaml，勿提交）
+ai:
+  base_url: https://api.siliconflow.cn/v1   # 推荐：硅基流动（一家通吃 LLM/视觉/ASR）
+  api_key: sk-xxxx
+  llm_model: Qwen/Qwen2.5-72B-Instruct     # 文本（打轴核心）
+  asr_model: FunAudioLLM/SenseVoiceSmall   # ASR（中文转写性价比高）
+  endpoints:                                # 高级：每个模型可单独指定接口与密钥
+    llm: {base_url: "", api_key: ""}
+    vision: {base_url: "", api_key: ""}
+    asr: {base_url: "", api_key: ""}
+
+axle:
+  target_min_seconds: 30      # 目标最短（秒）
+  target_max_seconds: 3600    # 目标最长（秒）= 1 小时
+  hard_max_seconds: 3600      # 硬上限，超过自动拆分
+  min_axle_seconds: 20        # 最短轴时长，过短碎片丢弃
+  window_seconds: 600         # LLM 找内容点的分窗大小
+  max_axles: 100              # 最多输出轴数
+  silence_threshold_db: -35   # 静音检测阈值
+
+asr:                          # 本地 faster-whisper（engine: local 时生效）
+  engine: local               # local=本地（免费）/ api=云端 OpenAI 兼容 ASR
+  local_model_path: D:\AdobE\VideoCaptioner\AppData\models\faster-whisper-large-v2
+  local_whisper_bin: ""       # 独立转写程序路径；留空自动探测 VideoCaptioner 目录 / PATH
+  local_device: cuda          # cuda / cpu（CUDA 块失败自动回退 CPU 重试）
+  local_compute_type: default # default=程序自动；也可 float16 / int8_float16 / int8
+  local_vad_threshold: 0.4    # Silero VAD 语音概率阈值（与卡卡字幕助手一致）
+  local_fallback_cpu: false   # true=多次失败后回退 CPU；false=强制 CUDA（默认，重试3次仍失败跳过该块）
+  local_batched: true         # 动态批解码（--batched）：解码阶段显著提速
+  local_beam_size: 5          # beam search 宽度（1=最快，5=默认质量）
+  local_hotwords: ""          # 热词（空格分隔）：专名/梗词识别增强；留空不启用
+  subtitle_max_chars: 30      # 字幕每行最大字符数（卡卡式精细化断句）
+```
+
+环境变量：`LCA_BASE_URL` / `LCA_API_KEY` / `LCA_LLM_MODEL` / `LCA_ASR_MODEL` /
+`LCA_LLM_BASE_URL` / `LCA_ASR_ENGINE` / `LCA_LOCAL_DEVICE` 等（完整映射见 `app/config.py` 的 `ENV_OVERRIDES`）。
+
+## 🔌 HTTP API 一览
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/tasks` | 创建任务 |
+| POST | `/api/tasks/batch` | 批量创建（多视频并行，最多 20 个） |
+| GET | `/api/tasks` / `/api/tasks/{id}` | 任务列表 / 详情（含 `srt_path`） |
+| DELETE | `/api/tasks/{id}?force=true` | 删除任务；运行中需 `force=true` |
+| GET | `/api/tasks/{id}/axles` | 打轴结果列表 |
+| PUT | `/api/tasks/{id}/axles/{axle_id}/review` | 复核（起止时间/标题） |
+| POST | `/api/tasks/{id}/reaxle` | 重新打轴（复用转写，可改参数+精细模式） |
+| GET | `/api/tasks/{id}/axles.csv` | 轴清单 CSV |
+| GET | `/api/tasks/{id}/subtitle` | SRT 字幕内容与路径 |
+| GET | `/api/tasks/{id}/video` | 视频预览（支持 Range 跳转） |
+| POST | `/api/tasks/{id}/export` | 导出切片（`axle_ids` 或自定义 `clips`） |
+| GET | `/api/tasks/{id}/exports` | 导出结果列表 |
+| GET | `/api/tasks/{id}/exports/{filename}` | 下载导出切片 |
+| GET/PUT | `/api/config` | 配置读写（密钥脱敏） |
+| POST | `/api/config/test-connection` | 连通测试，返回供应商模型列表 |
+| GET | `/api/files/ls?path=…` | 本地文件浏览 |
+| GET | `/api/files/drives` | 磁盘盘符列表 |
+| GET | `/api/files/sibling-danmaku?video_path=…` | 查找视频同目录同名弹幕 |
+| GET | `/api/files/media-info?path=…` | 读取视频时长等媒体信息 |
 
 ## 🛡️ 隐私与安全
 
-- 密钥只存在你自己的电脑上（`config.local.yaml`），不会上传、不会进 git
-- 本地转写模式下，视频和音频**完全不离开你的电脑**（只有字幕文字发给 AI 打轴）
-- 云端 ASR 模式只会把音频块发给 ASR 接口
-- 服务只监听本机 127.0.0.1，其他设备无法访问
+- 密钥只存本机（`config.local.yaml` / 环境变量），不会打印、不会进 git
+- 视频本体不上传；仅音频块（ASR）与文字（LLM）发送给你配置的 `base_url`
+- 服务默认只绑定 `127.0.0.1`；改 `host` 为非回环地址必须显式设置
+  `server.allow_non_localhost: true`（无鉴权，暴露即高危，风险自担）
+
+## 📁 目录结构
+
+```
+live-clip-analyzer/
+├── app/
+│   ├── main.py                  # FastAPI 入口
+│   ├── config.py                # 配置加载（四级优先级）
+│   ├── database.py              # SQLite（tasks + axles）
+│   ├── models.py                # 数据访问
+│   ├── api/                     # 任务 / 轴 / 导出 / 配置 / 文件浏览
+│   ├── services/
+│   │   ├── axle.py              # ★ 自动打轴核心（找内容点 + 合并 + 静音精修）
+│   │   ├── asr.py               # 云端 ASR + SRT 字幕生成
+│   │   ├── local_asr.py         # 本地 faster-whisper（CUDA 加速，自动回退 CPU）
+│   │   ├── danmaku.py           # 弹幕流式解析 + 密度高峰标注
+│   │   ├── ai_client.py         # AI 能力门面（三模型可独立端点）
+│   │   ├── ffmpeg_utils.py      # ffmpeg 封装
+│   │   └── exporter.py          # 切片导出
+│   ├── workers/                 # 后台任务流水线（含重新打轴）
+│   └── web/                     # 前端（深色 DeepSeek 风格，无构建步骤）
+├── docs/adr/                    # 架构决策记录（0001~0006）
+├── data/                        # 任务产物（gitignore）
+└── config.yaml
+```
+
+## 📚 项目文档
+
+- [`docs/adr/`](docs/adr/)：架构决策记录（0006 推倒重建为当前架构基准）
+- [`CONTEXT.md`](CONTEXT.md)：领域术语表（轴 / 内容点 / 打轴 / 复核等定义）
 
 ## ⚖️ 许可
 
-本软件代码内容全部由 AI 生成，依据 **[MIT License](LICENSE)** 开源共享——任何人可自由使用、修改与分发（含商用），只需保留版权声明与许可文本。
+本软件代码内容全部由 AI 生成，依据 **[MIT License](LICENSE)** 开源共享——
+任何人可自由使用、修改与分发（含商用），只需保留版权声明与许可文本。
