@@ -17,6 +17,8 @@ from ..services.asr import save_srt, transcribe_chunks
 from ..services.axle import build_axles
 
 _background_tasks: dict[str, asyncio.Task] = {}
+# 全局任务并发上限：批量创建（最多 20 个）时避免同时打满 CPU / 内存 / 网络
+_task_slots = asyncio.Semaphore(4)
 
 
 def start_task(task_id: str) -> None:
@@ -63,6 +65,11 @@ async def run_task(task_id: str) -> None:
     task = get_task(task_id)
     if not task:
         return
+    async with _task_slots:
+        await _run_task(task_id, cfg, task)
+
+
+async def _run_task(task_id: str, cfg, task) -> None:
     ai_client: AIClient | None = None
     try:
         video_path = Path(task["video_path"])
@@ -102,7 +109,8 @@ async def run_task(task_id: str) -> None:
         asr_segments = None
         if asr_path.exists():
             try:
-                asr_segments = json.loads(asr_path.read_text(encoding="utf-8"))
+                raw = await asyncio.to_thread(asr_path.read_text, encoding="utf-8")
+                asr_segments = json.loads(raw)
                 update_task(task_id, progress=50, message=f"ASR 复用缓存，共 {len(asr_segments)} 句")
             except Exception:
                 asr_segments = None
@@ -110,22 +118,23 @@ async def run_task(task_id: str) -> None:
             update_task(task_id, progress=30, message="ASR 语音转写中…")
             engine = str(getattr(cfg.asr, "engine", "local") or "local")
             if engine == "api":
-                from ..services.asr import transcribe_chunks
                 asr_segments = await transcribe_chunks(ai_client, chunks_dir,
                                                        int(cfg.asr.chunk_seconds),
                                                        str(cfg.asr.language or ""))
             else:
                 from ..services.local_asr import transcribe_chunks_local
                 asr_segments = await transcribe_chunks_local(chunks_dir, cfg)
-            asr_path.write_text(
-                json.dumps(asr_segments, ensure_ascii=False, indent=2), encoding="utf-8")
+            await asyncio.to_thread(
+                asr_path.write_text,
+                json.dumps(asr_segments, ensure_ascii=False, indent=2),
+                encoding="utf-8")
             update_task(task_id, progress=50, message=f"ASR 完成，共 {len(asr_segments)} 句")
         if not asr_segments:
             raise ValueError("ASR 转写结果为空，无法打轴")
 
         # 3.5 字幕附属文件：与视频同目录同名的 .srt（时间戳 + 文本）
         try:
-            srt_path = save_srt(video_path, asr_segments)
+            srt_path = await asyncio.to_thread(save_srt, video_path, asr_segments)
             update_task(task_id, srt_path=str(srt_path))
         except Exception as exc:  # noqa: BLE001
             print(f"[srt] 字幕文件保存失败（不影响打轴）: {exc}")
@@ -167,19 +176,25 @@ def start_reaxle(task_id: str, overrides: dict | None = None) -> None:
 
 async def run_reaxle(task_id: str, overrides: dict | None = None) -> None:
     """复用 asr.json 缓存重新打轴；可覆盖目标时长，可选精细分窗模式。"""
-    from types import SimpleNamespace
-
     cfg = load_config()
     task = get_task(task_id)
     if not task:
         return
+    async with _task_slots:
+        await _run_reaxle(task_id, cfg, task, overrides)
+
+
+async def _run_reaxle(task_id: str, cfg, task, overrides: dict | None = None) -> None:
+    from types import SimpleNamespace
+
     ai_client: AIClient | None = None
     try:
         tdir = _task_dir(cfg, task_id)
         asr_path = tdir / "asr.json"
         if not asr_path.exists():
             raise FileNotFoundError("该任务没有 ASR 缓存（asr.json），无法重新打轴")
-        asr_segments = json.loads(asr_path.read_text(encoding="utf-8"))
+        raw = await asyncio.to_thread(asr_path.read_text, encoding="utf-8")
+        asr_segments = json.loads(raw)
         if not asr_segments:
             raise ValueError("ASR 缓存为空，无法重新打轴")
         video_path = Path(task["video_path"])
@@ -187,9 +202,9 @@ async def run_reaxle(task_id: str, overrides: dict | None = None) -> None:
             raise FileNotFoundError(f"视频文件不存在: {video_path}")
 
         overrides = {k: v for k, v in (overrides or {}).items() if v is not None}
+        fine_mode = bool(overrides.pop("fine_mode", False))  # 先取出，避免泄漏进 axle_cfg
         axle_kwargs = dict(cfg.axle)
         axle_kwargs.update(overrides)
-        fine_mode = bool(overrides.pop("fine_mode", False))
         if fine_mode:
             # 精细模式：分窗减半，找更多内容点，切得更细
             axle_kwargs["window_seconds"] = max(120, int(axle_kwargs.get("window_seconds", 600)) // 2)

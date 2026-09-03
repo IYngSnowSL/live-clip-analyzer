@@ -196,25 +196,6 @@ async def extract_audio_chunks(src: str | Path, out_dir: str | Path,
     return sorted(str(p) for p in out_dir.glob("chunk_*.mp3"))
 
 
-async def extract_frames(video_path: str | Path, out_dir: str | Path,
-                         interval: float = 15.0) -> list[tuple[float, str]]:
-    """按固定间隔全局抽帧。返回 [(时间秒, 文件路径), ...]。"""
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    if interval <= 0:
-        interval = 15.0
-    pattern = out_dir / "frame_%06d.jpg"
-    cmd = [
-        ffmpeg_bin(), "-y", "-i", str(video_path),
-        "-vf", f"fps=1/{interval}",
-        "-q:v", "2",
-        str(pattern),
-    ]
-    await run_async(cmd, timeout=7200)
-    files = sorted(out_dir.glob("frame_*.jpg"))
-    return [(round(i * interval, 2), str(fp)) for i, fp in enumerate(files)]
-
-
 def format_ts(seconds: float) -> str:
     """秒数格式化为 HH:MM:SS。"""
     seconds = max(0, int(seconds))

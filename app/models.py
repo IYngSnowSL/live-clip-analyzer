@@ -58,7 +58,12 @@ def delete_task(task_id: str) -> None:
         conn.close()
 
 
+# update_task 允许写入的列白名单（防注入任意列名）
+_TASK_UPDATE_FIELDS = {"status", "progress", "message", "srt_path"}
+
+
 def update_task(task_id: str, **fields: Any) -> None:
+    fields = {k: v for k, v in fields.items() if k in _TASK_UPDATE_FIELDS}
     if not fields:
         return
     keys = list(fields)

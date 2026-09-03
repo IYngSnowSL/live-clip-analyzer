@@ -28,6 +28,14 @@ def _get_task_or_404(task_id: str) -> dict:
     return task
 
 
+def _csv_safe(value) -> str:
+    """防 CSV 公式注入：以 = + - @ 开头的单元格前置单引号。"""
+    s = str(value or "")
+    if s[:1] in ("=", "+", "-", "@"):
+        return "'" + s
+    return s
+
+
 @router.get("/{task_id}/axles")
 async def get_axles(task_id: str):
     _get_task_or_404(task_id)
@@ -62,9 +70,17 @@ async def review_axle(task_id: str, axle_id: int, payload: ReviewPayload):
     _get_task_or_404(task_id)
     fields = {}
     if payload.start is not None:
+        if not (payload.start >= 0):
+            raise HTTPException(400, "开始时间不能为负数")
         fields["review_start"] = payload.start
     if payload.end is not None:
+        if payload.end <= 0:
+            raise HTTPException(400, "结束时间必须大于 0")
         fields["review_end"] = payload.end
+    start = fields.get("review_start", payload.start)
+    end = fields.get("review_end", payload.end)
+    if start is not None and end is not None and start >= end:
+        raise HTTPException(400, "开始时间必须小于结束时间")
     if payload.title is not None:
         fields["review_title"] = payload.title
     if not fields:
@@ -100,8 +116,8 @@ async def export_axles_csv(task_id: str):
         end = a.get("review_end") if a.get("review_end") is not None else a.get("end")
         writer.writerow([
             i, start, end, round(float(end) - float(start), 1),
-            a.get("review_title") or a.get("title") or "",
-            a.get("reason") or "",
+            _csv_safe(a.get("review_title") or a.get("title") or ""),
+            _csv_safe(a.get("reason") or ""),
             a.get("score") or 0,
         ])
     data = "\ufeff" + buf.getvalue()

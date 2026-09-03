@@ -15,6 +15,7 @@
 server:
   host: 127.0.0.1
   port: 8000
+  allow_non_localhost: false   # 无鉴权服务：绑定非回环地址必须显式置 true（风险自担）
 
 data:
   data_dir: ./data          # 任务产物保存目录
@@ -50,6 +51,7 @@ axle:
   target_min_seconds: 30                # 目标最短时长（秒）= 30 秒
   target_max_seconds: 3600              # 目标最长时长（秒）= 1 小时
   hard_max_seconds: 3600                # 硬上限（秒）= 1 小时，超过自动拆分
+  min_axle_seconds: 20                  # 最短轴时长（秒），过短碎片丢弃
   merge_gap_seconds: 30                 # 相邻内容点合并间隔（秒）
   max_axles: 100                        # 最多输出轴数
   silence_threshold_db: -35             # 静音检测阈值（dB）

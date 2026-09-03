@@ -1,16 +1,15 @@
 """OpenAI 兼容 API 客户端：统一 AI 能力门面。
 
-对外提供三类语义化能力接口：
+对外提供语义化能力接口：
 - analyze_document：文档 / 字幕分析（LLM）
-- describe_images：视频 / 画面解析（视觉模型）
 - transcribe：语音转写（ASR 模型）
 
-上层模块（字幕切分、画面理解、语音转写）统一走本门面，不再各自拼装 HTTP。
+上层模块（打轴、语音转写）统一走本门面，不再各自拼装 HTTP。
+（视觉能力随 ADR-0006 推倒重建删除，配置页视觉字段仅作预留。）
 """
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import re
 from pathlib import Path
@@ -25,15 +24,8 @@ class AIError(Exception):
         self.status_code = status_code
 
 
-def image_to_data_url(path: str | Path) -> str:
-    """把图片文件转成 base64 data URL，供视觉模型调用。"""
-    data = Path(path).read_bytes()
-    b64 = base64.b64encode(data).decode("ascii")
-    return f"data:image/jpeg;base64,{b64}"
-
-
 class AIClient:
-    """三种模型能力（LLM / 视觉 / ASR）可各自配置独立接口地址与密钥。
+    """各模型能力（LLM / ASR）可各自配置独立接口地址与密钥。
 
     高级设置（ai.endpoints）中某项为空时，继承全局 ai.base_url / ai.api_key。
     """
@@ -46,13 +38,20 @@ class AIClient:
         self.vision_model = str(ai_cfg.vision_model)
         self.llm_model = str(ai_cfg.llm_model)
         self.asr_model = str(ai_cfg.asr_model)
-        self.timeout = float(ai_cfg.timeout)
-        self.concurrency = int(ai_cfg.concurrency)
+        # 参数钳制：避免 0/负超时与失控并发
+        try:
+            self.timeout = max(10.0, min(float(ai_cfg.timeout), 3600.0))
+        except (TypeError, ValueError):
+            self.timeout = 180.0
+        try:
+            self.concurrency = max(1, min(int(ai_cfg.concurrency), 32))
+        except (TypeError, ValueError):
+            self.concurrency = 4
 
         eps = getattr(ai_cfg, "endpoints", None)
         eps = eps if isinstance(eps, dict) else {}
         self._clients: dict[str, httpx.AsyncClient] = {}
-        for kind in ("llm", "vision", "asr"):
+        for kind in ("llm", "asr"):
             ep = eps.get(kind) if isinstance(eps.get(kind), dict) else {}
             base = str((ep or {}).get("base_url") or "").strip() or self.base_url
             key = str((ep or {}).get("api_key") or "").strip() or self.api_key
@@ -147,32 +146,6 @@ class AIClient:
             return await self.chat_json(messages, model=model, max_tokens=max_tokens, kind="llm")
         return await self.chat(messages, model=model, max_tokens=max_tokens, kind="llm")
 
-    async def describe_images(self, image_paths: list[str | Path], prompt: str,
-                              max_tokens: int = 500) -> str:
-        """视频 / 画面解析：把图片转 base64 data URL，调视觉模型。
-
-        多图失败时自动退回单图（兼容不支持单消息多图的接口）。
-        """
-        content: list[dict] = [{"type": "text", "text": prompt}]
-        for fp in image_paths:
-            if Path(fp).exists():
-                url = await asyncio.to_thread(image_to_data_url, fp)
-                content.append({"type": "image_url", "image_url": {"url": url}})
-        if len(content) == 1:
-            return ""
-        messages = [{"role": "user", "content": content}]
-        try:
-            text = await self.chat(messages, model=self.vision_model,
-                                   max_tokens=max_tokens, kind="vision")
-        except AIError:
-            if len(content) > 2:
-                messages = [{"role": "user", "content": content[:2]}]
-                text = await self.chat(messages, model=self.vision_model,
-                                       max_tokens=max_tokens, kind="vision")
-            else:
-                raise
-        return text or ""
-
     async def transcribe(self, file_path: str | Path, language: str | None = None,
                          response_format: str | None = "verbose_json",
                          retries: int = 3) -> dict:
@@ -220,20 +193,23 @@ class AIClient:
 
 
 def extract_json(text: str) -> dict:
-    """从模型输出中提取 JSON 对象。"""
+    """从模型输出中提取 JSON（支持对象与数组根，多个 JSON 时取第一个合法项）。"""
     text = (text or "").strip()
     if text.startswith("```"):
         text = re.sub(r"^```[a-zA-Z]*", "", text).strip()
         if text.endswith("```"):
             text = text[:-3].strip()
     try:
-        return json.loads(text)
+        obj = json.loads(text)
+        return obj if isinstance(obj, dict) else {"items": obj}
     except Exception:
         pass
-    match = re.search(r"\{.*\}", text, re.S)
-    if match:
+    # 用增量解析器提取首个完整 JSON 值，避免贪婪正则匹配到错误边界
+    decoder = json.JSONDecoder()
+    for m in re.finditer(r"[\[{]", text):
         try:
-            return json.loads(match.group(0))
+            obj, _ = decoder.raw_decode(text[m.start():])
         except Exception:
-            pass
+            continue
+        return obj if isinstance(obj, dict) else {"items": obj}
     raise AIError(f"无法从模型输出中解析 JSON: {text[:300]}")

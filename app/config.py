@@ -23,10 +23,44 @@ ENV_OVERRIDES: dict[str, str] = {
     "ai.vision_model": "LCA_VISION_MODEL",
     "ai.llm_model": "LCA_LLM_MODEL",
     "ai.asr_model": "LCA_ASR_MODEL",
+    "ai.endpoints.llm.base_url": "LCA_LLM_BASE_URL",
+    "ai.endpoints.llm.api_key": "LCA_LLM_API_KEY",
+    "ai.endpoints.vision.base_url": "LCA_VISION_BASE_URL",
+    "ai.endpoints.vision.api_key": "LCA_VISION_API_KEY",
+    "ai.endpoints.asr.base_url": "LCA_ASR_BASE_URL",
+    "ai.endpoints.asr.api_key": "LCA_ASR_API_KEY",
+    "asr.engine": "LCA_ASR_ENGINE",
+    "asr.local_model_path": "LCA_LOCAL_MODEL_PATH",
+    "asr.local_device": "LCA_LOCAL_DEVICE",
+    "asr.local_compute_type": "LCA_LOCAL_COMPUTE_TYPE",
 }
 
+# 回环地址（本服务无鉴权，非回环绑定必须显式确认）
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def check_bind_guard(cfg: "DotDict") -> None:
+    """回环地址保护：绑定非回环地址（局域网/公网）时必须显式开启开关。
+
+    文件浏览 / 连通测试等接口无鉴权，暴露到局域网会泄露整机目录枚举能力。
+    """
+    host = str(getattr(cfg.server, "host", "127.0.0.1") or "127.0.0.1").strip().lower()
+    if host in LOOPBACK_HOSTS:
+        return
+    if not bool(getattr(cfg.server, "allow_non_localhost", False)):
+        raise RuntimeError(
+            f"拒绝以非回环地址 {host!r} 启动：本服务无鉴权，暴露到局域网/公网会泄露"
+            "文件浏览与连通测试能力。若确需开放，请在 config.yaml 设置 "
+            "server.allow_non_localhost: true（风险自担）")
+
+# 注意：以下 DEFAULTS 与项目根 config.yaml 是同一份配置的两处拷贝，
+# 修改任何一项时两处必须同步（config.yaml 同时承担用户文档职责）。
 DEFAULTS: dict[str, Any] = {
-    "server": {"host": "127.0.0.1", "port": 8000},
+    "server": {
+        "host": "127.0.0.1",
+        "port": 8000,
+        "allow_non_localhost": False,  # 无鉴权服务，绑定非回环地址必须显式置 true（风险自担）
+    },
     "data": {"data_dir": "./data"},
     "ai": {
         "base_url": "https://api.openai.com/v1",
@@ -59,6 +93,7 @@ DEFAULTS: dict[str, Any] = {
         "target_min_seconds": 30,     # 目标最短时长（秒）= 30 秒
         "target_max_seconds": 3600,   # 目标最长时长（秒）= 1 小时
         "hard_max_seconds": 3600,     # 硬上限（秒）= 1 小时，超过自动拆分
+        "min_axle_seconds": 20,       # 最短轴时长（秒），过短碎片丢弃
         "merge_gap_seconds": 30,      # 相邻内容点合并间隔（秒）
         "max_axles": 100,             # 最多输出轴数
         "silence_threshold_db": -35,  # 静音检测阈值（dB）

@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import asyncio
 import re
+from itertools import zip_longest
 
 from .ai_client import AIError
-from .ffmpeg_utils import ffmpeg_bin, format_ts, run_async
+from .ffmpeg_utils import ffmpeg_bin, ffprobe_info, format_ts, run_async
 
 # ---------------- LLM 找内容点 ----------------
 
@@ -76,6 +77,8 @@ async def find_points(client, asr_segments: list[dict], axle_cfg) -> list[dict]:
     """分窗调 LLM 找内容点，返回 [{start, end, title, reason, score}]。"""
     window = max(60, int(getattr(axle_cfg, "window_seconds", 600)))
     overlap = int(getattr(axle_cfg, "overlap_seconds", 60))
+    if not asr_segments:
+        return []
     total_start = float(asr_segments[0]["start"])
     total_end = float(asr_segments[-1]["end"])
     step = max(window // 5, window - overlap)
@@ -101,14 +104,20 @@ async def find_points(client, asr_segments: list[dict], axle_cfg) -> list[dict]:
         for p in data.get("points") or []:
             start = _ts_to_seconds(p.get("start"))
             end = _ts_to_seconds(p.get("end"))
-            if end <= start or start < 0:
+            score = float(p.get("score") or 0)
+            if score < 5:
+                continue  # 提示词要求低于 5 分不输出，这里兜底强制过滤
+            # 时间戳越界防护：LLM 幻觉出的超出视频范围的 end 截断到总时长
+            start = max(0.0, min(start, total_end))
+            end = max(0.0, min(end, total_end))
+            if end <= start:
                 continue
             points.append({
                 "start": round(start, 2),
                 "end": round(end, 2),
                 "title": str(p.get("title") or "").strip(),
                 "reason": str(p.get("reason") or "").strip(),
-                "score": float(p.get("score") or 0),
+                "score": score,
             })
         return points
 
@@ -158,6 +167,7 @@ def merge_points(points: list[dict], axle_cfg) -> list[dict]:
         merged.append(dict(p))
 
     axles: list[dict] = []
+    min_dur = max(0.0, float(getattr(axle_cfg, "min_axle_seconds", 20)))
     for p in merged:
         dur = p["end"] - p["start"]
         if dur > hard_max:
@@ -168,7 +178,7 @@ def merge_points(points: list[dict], axle_cfg) -> list[dict]:
                     seg_end = min(cur + target_min, p["end"])
                 axles.append({**p, "start": round(cur, 2), "end": round(seg_end, 2)})
                 cur = seg_end
-        elif dur >= 20:  # 太短的碎片丢弃（Q3 大量候选，仍留 20 秒以上）
+        elif dur >= min_dur:  # 过短碎片丢弃（阈值可配 min_axle_seconds）
             axles.append({**p, "start": round(p["start"], 2), "end": round(p["end"], 2)})
 
     max_axles = max(1, int(getattr(axle_cfg, "max_axles", 100)))
@@ -180,7 +190,10 @@ def merge_points(points: list[dict], axle_cfg) -> list[dict]:
 
 async def detect_silences(video_path, threshold_db: float = -35,
                           min_seconds: float = 0.4) -> list[dict]:
-    """ffmpeg silencedetect 检测全片静音区间，返回 [{start, end}]。"""
+    """ffmpeg silencedetect 检测全片静音区间，返回 [{start, end}]。
+
+    视频尾部未闭合的静音（只有 silence_start 没有 silence_end）以视频总时长补全。
+    """
     cmd = [
         ffmpeg_bin(), "-hide_banner", "-i", str(video_path),
         "-af", f"silencedetect=noise={threshold_db}dB:d={min_seconds}",
@@ -191,15 +204,30 @@ async def detect_silences(video_path, threshold_db: float = -35,
     except RuntimeError as exc:
         print(f"[axle] silencedetect 执行失败，跳过精修: {exc}")
         return []
+    duration = 0.0
+    try:
+        info = await ffprobe_info(video_path)
+        duration = float(info.get("duration") or 0)
+    except Exception:  # noqa: BLE001
+        duration = 0.0
     text = stderr.decode("utf-8", errors="ignore")
     starts = [float(x) for x in re.findall(r"silence_start: ([0-9.]+)", text)]
     ends = [float(x) for x in re.findall(r"silence_end: ([0-9.]+)", text)]
-    return [{"start": s, "end": e} for s, e in zip(starts, ends)]
+    return [
+        {"start": s, "end": e if e is not None else duration}
+        for s, e in zip_longest(starts, ends)
+    ]
 
 
-def refine_axle_bounds(axle: dict, silences: list[dict], pad: float = 0.3) -> dict:
-    """用静音点精修轴边界：起点移到最近静音区之后，终点移到最近静音区之前。"""
+def refine_axle_bounds(axle: dict, silences: list[dict], pad: float = 0.3,
+                       min_dur: float = 5.0) -> dict:
+    """用静音点精修轴边界：起点移到最近静音区之后，终点移到最近静音区之前。
+
+    防护：不把边界推出原始范围，且调整后时长不足 min_dur 秒时放弃该侧调整，
+    避免极端静音分布把轴压成 1 秒碎片。
+    """
     start, end = float(axle["start"]), float(axle["end"])
+    orig_start, orig_end = start, end
 
     best_s = None
     for sil in silences:
@@ -207,7 +235,9 @@ def refine_axle_bounds(axle: dict, silences: list[dict], pad: float = 0.3) -> di
             if best_s is None or abs(sil["start"] - start) < abs(best_s["start"] - start):
                 best_s = sil
     if best_s:
-        start = min(best_s["end"] + pad, end - 1)
+        cand = max(best_s["end"] + pad, orig_start)
+        if cand <= end - min_dur:
+            start = cand
 
     best_e = None
     for sil in silences:
@@ -215,7 +245,9 @@ def refine_axle_bounds(axle: dict, silences: list[dict], pad: float = 0.3) -> di
             if best_e is None or abs(sil["start"] - end) < abs(best_e["start"] - end):
                 best_e = sil
     if best_e:
-        end = max(best_e["start"] - pad, start + 1)
+        cand = min(best_e["start"] - pad, orig_end)
+        if cand >= start + min_dur:
+            end = cand
 
     return {**axle, "start": round(start, 2), "end": round(end, 2)}
 

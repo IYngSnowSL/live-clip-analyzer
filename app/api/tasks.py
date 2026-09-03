@@ -1,6 +1,7 @@
 """任务相关接口。"""
 from __future__ import annotations
 
+import math
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -33,6 +34,17 @@ def _auto_danmaku(video_path: Path) -> str | None:
     return str(sibling) if sibling.exists() else None
 
 
+def _check_offset(offset: float) -> float:
+    """弹幕时间偏移校验：必须是非负有限数值。"""
+    try:
+        offset = float(offset)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "offset_seconds 必须是数值")
+    if not math.isfinite(offset) or offset < 0:
+        raise HTTPException(400, "offset_seconds 必须是非负有限数值")
+    return offset
+
+
 @router.post("/batch")
 async def create_tasks_batch(payload: BatchCreate):
     """批量创建任务：一次传入多个视频路径，并行分析。"""
@@ -46,10 +58,11 @@ async def create_tasks_batch(payload: BatchCreate):
         if not video_path.exists():
             raise HTTPException(400, f"视频文件不存在: {vp}")
         danmaku = payload.danmaku_path or _auto_danmaku(video_path)
+        offset = _check_offset(payload.offset_seconds)
         task = models.create_task(
             video_path=str(video_path.resolve()),
             danmaku_path=str(Path(danmaku).resolve()) if danmaku else None,
-            offset_seconds=payload.offset_seconds,
+            offset_seconds=offset,
         )
         start_task(task["id"])
         tasks.append(task)
@@ -71,10 +84,11 @@ async def create_task(payload: TaskCreate):
         auto_danmaku = _auto_danmaku(video_path)
         danmaku = auto_danmaku
 
+    offset = _check_offset(payload.offset_seconds)
     task = models.create_task(
         video_path=str(video_path.resolve()),
         danmaku_path=str(Path(danmaku).resolve()) if danmaku else None,
-        offset_seconds=payload.offset_seconds,
+        offset_seconds=offset,
     )
     if auto_danmaku:
         task["_auto_danmaku"] = True  # 仅供前端提示，不落库

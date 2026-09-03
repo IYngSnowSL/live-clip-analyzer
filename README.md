@@ -3,7 +3,7 @@
 > **📢 郑重声明**
 > 本软件代码内容全部由 AI 生成。
 
-> v0.4.8 ｜ 本地运行 ｜ Windows / Linux / macOS ｜ [MIT License](LICENSE)
+> v0.4.9 ｜ 本地运行 ｜ Windows / Linux / macOS ｜ [MIT License](LICENSE)
 
 ---
 
@@ -156,6 +156,7 @@ axle:
   target_min_seconds: 30      # 目标最短（秒）
   target_max_seconds: 3600    # 目标最长（秒）= 1 小时
   hard_max_seconds: 3600      # 硬上限，超过自动拆分
+  min_axle_seconds: 20        # 最短轴时长，过短碎片丢弃
   window_seconds: 600         # LLM 找内容点的分窗大小
   max_axles: 100              # 最多输出轴数
   silence_threshold_db: -35   # 静音检测阈值
@@ -168,7 +169,8 @@ asr:                          # 本地 faster-whisper（engine: local 时生效�
   subtitle_max_chars: 30      # 字幕每行最大字符数（卡卡式精细化断句）
 ```
 
-环境变量：`LCA_BASE_URL` / `LCA_API_KEY` / `LCA_LLM_MODEL` / `LCA_ASR_MODEL` 等。
+环境变量：`LCA_BASE_URL` / `LCA_API_KEY` / `LCA_LLM_MODEL` / `LCA_ASR_MODEL` /
+`LCA_LLM_BASE_URL` / `LCA_ASR_ENGINE` / `LCA_LOCAL_DEVICE` 等（完整映射见 `app/config.py` 的 `ENV_OVERRIDES`）。
 
 ## 🔌 HTTP API 一览
 
@@ -198,7 +200,8 @@ asr:                          # 本地 faster-whisper（engine: local 时生效�
 
 - 密钥只存本机（`config.local.yaml` / 环境变量），不会打印、不会进 git
 - 视频本体不上传；仅音频块（ASR）与文字（LLM）发送给你配置的 `base_url`
-- 服务默认只绑定 `127.0.0.1`；**请勿改 `host` 为 0.0.0.0**（会无鉴权暴露文件浏览接口）
+- 服务默认只绑定 `127.0.0.1`；改 `host` 为非回环地址必须显式设置
+  `server.allow_non_localhost: true`（无鉴权，暴露即高危，风险自担）
 
 ## 📁 目录结构
 

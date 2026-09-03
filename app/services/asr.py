@@ -91,8 +91,9 @@ _EMOJI_RE = re.compile(
 def clean_subtitle_text(text: str) -> str:
     """字幕文本清理：去表情、句号转逗号做句读、句尾不带句号（保留情感标点 ？！）。"""
     text = _EMOJI_RE.sub("", str(text or ""))
-    # 中文句号与英文句号 → 逗号做句读（“不使用句号”）
-    text = text.replace("。", "，").replace(".", "，")
+    # 中文句号 → 逗号；英文句号 → 逗号（但保留数字小数点，如 "3.5"）
+    text = text.replace("。", "，")
+    text = re.sub(r"(?<!\d)\.(?!\d)", "，", text)
     # 连续逗号压缩
     text = re.sub(r"[，,]{2,}", "，", text)
     # 句尾的逗号/句读符去掉
@@ -111,11 +112,13 @@ def segments_to_srt(segments: list[dict]) -> str:
         return f"{h:02d}:{m:02d}:{s:02d},{milli:03d}"
 
     blocks = []
-    for i, seg in enumerate(segments, 1):
+    idx = 0  # 块序号只对实际输出的条目递增，空文本不占号
+    for seg in segments:
         text = clean_subtitle_text(seg.get("text") or "")
         if not text:
             continue
-        blocks.append(f"{i}\n{ts(seg['start'])} --> {ts(seg['end'])}\n{text}\n")
+        idx += 1
+        blocks.append(f"{idx}\n{ts(seg['start'])} --> {ts(seg['end'])}\n{text}\n")
     return "\n".join(blocks)
 
 

@@ -92,13 +92,6 @@ button.ghost:hover, .btn.ghost:hover {
 }
 .btn-primary { box-shadow: 0 4px 14px rgba(77, 107, 254, .3); }
 
-button.btn-view {
-  background: var(--surface-2);
-  border-color: var(--border-strong);
-  color: var(--text-2);
-  font-weight: 500;
-}
-button.btn-view:hover { background: var(--surface-3); color: var(--text); }
 button.btn-edit {
   background: var(--surface-2);
   border-color: var(--border-strong);
@@ -925,14 +918,6 @@ body.view-report .window {
 .fb-icon { flex-shrink: 0; }
 .fb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fb-size { margin-left: auto; color: var(--muted); font-size: 11.5px; flex-shrink: 0; }
-.fb-check {
-  flex-shrink: 0;
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  accent-color: var(--primary);
-  cursor: pointer;
-}
 .fb-footer {
   display: flex;
   align-items: center;
@@ -1047,6 +1032,29 @@ body.view-report .window {
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
+}
+
+/* ---------------- 复制等操作的轻量提示条 ---------------- */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%) translateY(12px);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
+  z-index: 1000;
+}
+#toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 /* ---------------- 响应式 ---------------- */

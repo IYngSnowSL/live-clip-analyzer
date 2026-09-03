@@ -1,5 +1,47 @@
 # Changelog
 
+## v0.4.9 — 审查修复（P2/P3）+ 安全加固与打磨
+
+### 安全加固（P2）
+- **回环地址保护**：绑定非回环地址（如 0.0.0.0）必须显式设置
+  `server.allow_non_localhost: true`，否则拒绝启动（无鉴权文件浏览/连通测试不再可能意外暴露）
+- **连通测试禁重定向**：`test-connection` 不再跟随重定向（防 SSRF 借重定向探测内网）
+- **CSV 公式注入防护**：以 `= + - @` 开头的标题/理由单元格前置单引号
+
+### 打轴逻辑（P3）
+- 最短轴时长可配：`axle.min_axle_seconds`（默认 20 秒，替代硬编码阈值）
+- score < 5 的内容点强制过滤（不再只靠提示词自觉）
+- 时间戳越界防护：LLM 幻觉出的 end 截断到视频总时长
+- 静音精修防护：不把边界推出原始范围，调整后不足 5 秒放弃该侧调整（不再压成 1 秒碎片）
+- 尾部未闭合静音以视频总时长补全（不再丢失最后一个 silence_start）
+
+### 健壮性（P3）
+- `extract_json` 改用增量解析器：支持数组根与多 JSON 场景，不再贪婪误匹配
+- AI 客户端 timeout / concurrency 参数钳制（10s~1h / 1~32）
+- `update_task` 列名白名单，杜绝任意列注入
+- `offset_seconds` 校验（非负有限数值）
+- 任务全局并发上限 4（批量 20 个不再同时打满 CPU/网络）
+- asr.json 读写与 SRT 生成移入线程池（不阻塞事件循环）
+- `init_db` / 中断任务标记移入 FastAPI lifespan（不再有导入期副作用）
+- `fine_mode` 不再泄漏进打轴参数
+- media-info 返回失败原因（不再静默吞掉 ffprobe 异常）
+
+### 前端（P3）
+- `api()` 支持按调用指定超时；切片导出放宽到 10 分钟（不再 45s 假失败）
+- 创建任务：手动输入与已选文件合并；单选走单任务接口（自动弹幕提示生效）；批量统一弹幕时明确提示
+- 复核保存：前后端双重校验起止时间 + 防重复提交
+- 评分筛选、字幕状态随任务切换重置；模型下拉点击不再被误关；页面切后台暂停任务轮询
+- 复制成功提示改为独立 toast（不再被进度轮询覆盖）
+
+### 清理（P3）
+- 删除死代码：`extract_frames` / `describe_images` / `image_to_data_url` /
+  `export_clip_sync` / vision 客户端无条件创建 / 冗余 import / 死 CSS
+- 删除已删模块的陈旧 `.pyc` 与 data 内测试残留 SRT
+- requirements.txt 显式声明 pydantic，移除过时的 scenedetect 注释
+- 环境变量覆盖补齐：`ai.endpoints.*`、`asr.engine / local_model_path / local_device / local_compute_type`
+- ADR-0003 标 superseded、0005 标 partially superseded、0004/0006 补修订说明
+- SRT 序号连续化；数字小数点不再被误替换成逗号
+
 ## v0.4.8 — 本地 ASR 切换 CUDA + 全项目审查修复（P0/P1）
 
 - **本地 ASR 切换 CUDA**：默认 `asr.local_device: cuda`、`local_compute_type: float16`；
@@ -46,7 +88,7 @@
 - 实测（用户真实直播 60 秒音频）：CPU int8 转写 34 秒（约 1.8 倍实时），
   12 句精细化字幕全部 ≤30 字符，时间戳 1~6 秒级
 
-## v0.4.4 — 五项 UI 优化
+## v0.4.4 — UI 优化（条目归属修正见下）
 
 - **A. 一键复制剪辑标记**：单轴「复制」按钮（`HH:MM:SS - HH:MM:SS 标题`）；
   顶部「📋 复制全部」一键复制全部轴清单（**制表符分隔 TSV**，可直接粘贴进 Excel / 共享表格）

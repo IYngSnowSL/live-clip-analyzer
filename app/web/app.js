@@ -17,12 +17,13 @@ function formatTs(seconds) {
 
 async function api(path, options = {}) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 45000);  // 45s 超时保护
+  const { timeoutMs, ...fetchOptions } = options; // timeoutMs 为内部参数，不透传给 fetch
+  const timer = setTimeout(() => controller.abort(), timeoutMs || 45000); // 默认 45s 超时
   try {
     const resp = await fetch(path, {
       headers: { "Content-Type": "application/json" },
       signal: controller.signal,
-      ...options,
+      ...fetchOptions,
     });
     if (!resp.ok) {
       let detail = `HTTP ${resp.status}`;
@@ -199,7 +200,21 @@ async function copyToClipboard(text, label) {
     document.execCommand("copy");
     ta.remove();
   }
-  $("report-status").textContent = `✅ 已复制${label || ""}到剪贴板（可直接粘贴到 Excel / 共享表格）`;
+  toast(`✅ 已复制${label || ""}到剪贴板（可直接粘贴到 Excel / 共享表格）`);
+}
+
+function toast(msg) {
+  // 轻量提示条：不占用报告状态栏（避免被进度轮询冲掉）
+  let el = document.getElementById("toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "toast";
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(el._hideTimer);
+  el._hideTimer = setTimeout(() => el.classList.remove("show"), 2500);
 }
 
 function buildAxlesTsv() {
@@ -252,6 +267,7 @@ async function openReport(taskId) {
   const token = ++reportToken;
   currentTaskId = taskId;
   resetSubtitleState();
+  $("score-filter").value = "0"; // 评分筛选随任务切换重置
   openWindow();
   const task = await api(`/api/tasks/${taskId}`);
   if (token !== reportToken) return;
@@ -320,6 +336,7 @@ async function exportAxleIds(axleIds, btn) {
     const result = await api(`/api/tasks/${currentTaskId}/export`, {
       method: "POST",
       body: JSON.stringify(payload),
+      timeoutMs: 600000, // 导出（尤其精切重编码）可能远超 45s 默认超时
     });
     renderExportResults(result.files || []);
     const okCount = (result.files || []).filter((f) => f.status === "ok").length;
@@ -907,6 +924,7 @@ function initModelSelects() {
     });
   });
   document.querySelectorAll(".ms-input").forEach((input) => {
+    input.addEventListener("click", (e) => e.stopPropagation()); // 点击输入框不触发 document 级关闭
     input.addEventListener("focus", () => toggleModelPanel(input.id.replace("cfg-", "").replace("-model", ""), true));
   });
   document.addEventListener("click", () => {
@@ -1021,44 +1039,53 @@ async function init() {
     btn.disabled = true;
     btn.textContent = "创建中…";
     try {
-      if (selectedVideos.length) {
-        // 批量：一次创建 N 个任务并行分析
-        const tasks = await api("/api/tasks/batch", {
+      // 视频来源：手动输入 + 已选 chips 合并（去重），单选走单任务接口以便自动关联弹幕提示
+      const manual = $("video_path").value.trim();
+      const paths = selectedVideos.map((v) => v.path);
+      if (manual && !paths.includes(manual)) paths.unshift(manual);
+      if (!paths.length) {
+        alert("请先填写视频路径，或通过 📂 浏览选择");
+        return;
+      }
+      if (paths.length === 1) {
+        const task = await api("/api/tasks", {
           method: "POST",
           body: JSON.stringify({
-            video_paths: selectedVideos.map((v) => v.path),
+            video_path: paths[0],
             danmaku_path: danmaku,
             offset_seconds: offset,
           }),
         });
         selectedVideos = [];
         renderChips();
+        $("video_path").value = "";
+        $("danmaku_path").value = "";
+        $("offset_seconds").value = "0";
         await loadTasks();
-        await openReport(tasks[0].id);
-        alert(`已创建 ${tasks.length} 个任务，正在并行分析（任务列表可查看进度）`);
+        await openReport(task.id);
+        if (task._auto_danmaku) {
+          alert(`已在视频同目录发现同名弹幕文件，已自动关联：\n${task.danmaku_path}`);
+        }
         return;
       }
-      const payload = {
-        video_path: $("video_path").value.trim(),
-        danmaku_path: danmaku,
-        offset_seconds: offset,
-      };
-      if (!payload.video_path) {
-        alert("请先填写视频路径，或通过 📂 浏览选择");
-        return;
-      }
-      const task = await api("/api/tasks", {
+      // 批量：一次创建 N 个任务并行分析
+      const tasks = await api("/api/tasks/batch", {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          video_paths: paths,
+          danmaku_path: danmaku,
+          offset_seconds: offset,
+        }),
       });
+      selectedVideos = [];
+      renderChips();
       $("video_path").value = "";
       $("danmaku_path").value = "";
       $("offset_seconds").value = "0";
       await loadTasks();
-      await openReport(task.id);
-      if (task._auto_danmaku) {
-        alert(`已在视频同目录发现同名弹幕文件，已自动关联：\n${task.danmaku_path}`);
-      }
+      await openReport(tasks[0].id);
+      const danmakuNote = danmaku ? "\n（注意：批量任务统一关联了同一个弹幕文件）" : "";
+      alert(`已创建 ${tasks.length} 个任务，正在并行分析（任务列表可查看进度）${danmakuNote}`);
     } catch (err) {
       alert("创建失败：" + err.message);
     } finally {
@@ -1106,11 +1133,15 @@ async function init() {
   });
   $("btn-save-review").addEventListener("click", async () => {
     const id = $("edit-id").value;
-    const payload = {
-      start: Number($("edit-start").value),
-      end: Number($("edit-end").value),
-      title: $("edit-title").value,
-    };
+    const start = Number($("edit-start").value);
+    const end = Number($("edit-end").value);
+    if (!(start >= 0) || end <= 0 || start >= end) {
+      alert("时间无效：开始时间必须小于结束时间，且结束时间大于 0");
+      return;
+    }
+    const payload = { start, end, title: $("edit-title").value };
+    const btn = $("btn-save-review");
+    btn.disabled = true;
     try {
       await api(`/api/tasks/${currentTaskId}/axles/${id}/review`, {
         method: "PUT",
@@ -1120,11 +1151,15 @@ async function init() {
       await refreshReportData();
     } catch (err) {
       alert("保存失败：" + err.message);
+    } finally {
+      btn.disabled = false;
     }
   });
 
   await loadTasks();
-  setInterval(loadTasks, 5000);
+  setInterval(() => {
+    if (!document.hidden) loadTasks(); // 页面切后台时暂停轮询
+  }, 5000);
 }
 
 async function loadTasks() {

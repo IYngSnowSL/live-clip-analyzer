@@ -12,6 +12,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
+from ..services.ffmpeg_utils import ffprobe_duration
+
 router = APIRouter(prefix="/api/files", tags=["files"])
 
 # 不同用途的文件扩展名过滤
@@ -102,10 +104,11 @@ async def media_info(path: str):
         raise HTTPException(400, f"不是文件: {path}")
     size = p.stat().st_size
     duration = 0.0
+    warning = ""
     try:
-        from ..services.ffmpeg_utils import ffprobe_duration
-        import asyncio
         duration = await ffprobe_duration(p)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        # 不是致命错误：仍返回文件大小，但把失败原因带回前端展示
         duration = 0.0
-    return {"duration": round(float(duration), 1), "size": size}
+        warning = f"媒体信息读取失败: {type(exc).__name__}: {exc}"
+    return {"duration": round(float(duration), 1), "size": size, "warning": warning}

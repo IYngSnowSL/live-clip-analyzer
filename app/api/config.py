@@ -197,7 +197,8 @@ async def test_connection(payload: TestConnectionPayload) -> dict:
         candidates.append(base + "/v1/models")
 
     last_err = "无法连接"
-    async with httpx.AsyncClient(timeout=12, headers=headers, follow_redirects=True) as client:
+    # follow_redirects=False：禁止重定向（防 SSRF 借重定向探测内网地址）
+    async with httpx.AsyncClient(timeout=12, headers=headers, follow_redirects=False) as client:
         for url in candidates:
             try:
                 resp = await client.get(url)

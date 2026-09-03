@@ -113,9 +113,3 @@ async def export_clips(video_path: str | Path, clips: list[dict[str, Any]],
     results = await asyncio.gather(*(one(i, c) for i, c in enumerate(clips)))
     return list(results)
 
-
-def export_clip_sync(video_path: str | Path, start: float, end: float,
-                     out_path: str | Path, accurate: bool = False) -> str:
-    """同步版本，便于在非异步环境或脚本中直接调用。"""
-    return asyncio.run(export_clip(video_path, start, end, out_path, accurate=accurate))
-
