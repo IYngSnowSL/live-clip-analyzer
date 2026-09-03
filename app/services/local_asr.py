@@ -8,8 +8,8 @@
 - VAD：exe 内置 Silero VAD（--vad_filter，阈值 0.4 可配）
 - 精细化：exe 输出 JSON（词级时间戳）→ 本项目 refine_segments 卡卡式断句
   （每行 ≤30 字符可配；无词级数据自动按字符比例兜底）
-- 容错：CUDA 块失败自动回退 CPU 重跑该块；单块失败跳过不中断任务；
-  串行锁防止多任务同时抢单 GPU
+- 容错：**强制 CUDA**（默认）——失败自动同块重试（含显存预检等待），仍失败跳过该块；
+  可选 `local_fallback_cpu: true` 时最终回退 CPU；串行锁防止多任务同时抢单 GPU
 """
 from __future__ import annotations
 
@@ -115,6 +115,44 @@ async def _run_exe(cmd: list[str], timeout: float = 7200) -> tuple[bytes, bytes]
     return stdout, stderr
 
 
+async def _free_vram_mb() -> int | None:
+    """查询 GPU 空闲显存（MB）；nvidia-smi 不可用时返回 None（跳过预检）。"""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "nvidia-smi", "--query-gpu=memory.free",
+            "--format=csv,noheader,nounits",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await proc.communicate()
+        first = out.decode("utf-8", errors="ignore").strip().splitlines()[0].strip()
+        return int(float(first))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _vram_need_mb(compute: str) -> int:
+    """模型 + 推理工作区所需空闲显存的保守估计（MB）。"""
+    if "int8" in str(compute).lower():
+        return 2600
+    return 4400
+
+
+def _read_parsed(fp: Path, stderr: bytes) -> list[dict]:
+    """读取并解析独立程序生成的 JSON 输出，用后即删。"""
+    out_json = fp.with_suffix(".json")
+    if not out_json.exists():
+        # 程序可能退出码为 0 但实际失败（如模型名不合法），必须显式报错
+        tail = stderr.decode("utf-8", errors="ignore")[-400:]
+        raise RuntimeError(f"whisper 未生成输出文件: {tail}")
+    parsed = _parse_json_result(out_json.read_text(encoding="utf-8"))
+    try:
+        out_json.unlink()  # 用后即删，保持块目录干净
+    except OSError:
+        pass
+    return parsed
+
+
 def _parse_json_result(json_text: str) -> list[dict]:
     """解析独立程序的 JSON 输出 → [{start, end, text, words?}]。"""
     data = json.loads(json_text)
@@ -216,6 +254,51 @@ def refine_segments(segments, max_chars: int = 30) -> list[dict]:
     return out
 
 
+async def _run_cuda_with_retries(cmd: list[str], fp: Path, compute: str,
+                                 retries: int = 3) -> list[dict] | None:
+    """强制 CUDA：显存预检（不足则等待）+ 失败同块重试，不回退 CPU。
+
+    返回解析后的段落；多次重试仍失败返回 None（跳过该块）。
+    """
+    need = _vram_need_mb(compute)
+    for attempt in range(1, retries + 1):
+        # 显存预检：桌面应用（壁纸/浏览器等）可能临时占用显存，等待其释放
+        waited = 0
+        while waited < 600:
+            free = await _free_vram_mb()
+            if free is None or free >= need:
+                break
+            print(f"[local-asr] 空闲显存不足（{free}MB < 需约 {need}MB），"
+                  f"等待释放… 已等 {waited}s", flush=True)
+            await asyncio.sleep(15)
+            waited += 15
+        try:
+            async with _transcribe_lock:
+                _, stderr = await _run_exe(cmd)
+            return _read_parsed(fp, stderr)
+        except RuntimeError as exc:
+            if attempt >= retries:
+                print(f"[local-asr] {fp.name} CUDA 转写失败"
+                      f"（已重试 {retries} 次，跳过该块）:\n{exc}")
+                return None
+            wait_s = 20 * attempt
+            print(f"[local-asr] {fp.name} CUDA 转写失败"
+                  f"（第 {attempt}/{retries} 次），{wait_s}s 后重试:\n{exc}")
+            await asyncio.sleep(wait_s)
+    return None
+
+
+async def _run_once(cmd: list[str], fp: Path) -> list[dict] | None:
+    """单次执行（CPU 回退路径），失败返回 None。"""
+    try:
+        async with _transcribe_lock:
+            _, stderr = await _run_exe(cmd)
+        return _read_parsed(fp, stderr)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[local-asr] {fp.name} 转写失败，跳过该块:\n{exc}")
+        return None
+
+
 async def transcribe_chunks_local(chunks_dir: str | Path, cfg) -> list[dict]:
     """本地转录音频块目录（独立程序子进程，固定中文），返回精细化 segments。"""
     chunks_dir = Path(chunks_dir)
@@ -232,8 +315,11 @@ async def transcribe_chunks_local(chunks_dir: str | Path, cfg) -> list[dict]:
     threads = int(getattr(cfg.asr, "local_cpu_threads", 6) or 6)
     vad_threshold = float(getattr(cfg.asr, "local_vad_threshold", 0.4) or 0.4)
     max_chars = int(getattr(cfg.asr, "subtitle_max_chars", 30) or 30)
+    # 默认强制 CUDA（失败同块重试，不回退）；显式开启时才允许 CPU 兜底
+    fallback_cpu = bool(getattr(cfg.asr, "local_fallback_cpu", False))
 
-    print(f"[local-asr] 引擎: {bin_path}（device={device}, compute={compute}）")
+    print(f"[local-asr] 引擎: {bin_path}（device={device}, compute={compute}, "
+          f"回退CPU={fallback_cpu}）")
     all_segments: list[dict] = []
     offset = 0.0
 
@@ -246,37 +332,17 @@ async def transcribe_chunks_local(chunks_dir: str | Path, cfg) -> list[dict]:
         except Exception:
             pass
 
-        # CUDA 失败自动回退 CPU 重跑该块；仍失败则跳过该块继续（不中断任务）
-        parsed: list[dict] | None = None
-        devices = (device, "cpu") if device == "cuda" else (device,)
-        for dev in devices:
-            cmd = _build_cmd(bin_path, model_path, dev, compute, threads,
-                             vad_threshold, str(chunks_dir), fp)
-            try:
-                async with _transcribe_lock:
-                    _, stderr = await _run_exe(cmd)
-                out_json = fp.with_suffix(".json")
-                if out_json.exists():
-                    parsed = _parse_json_result(out_json.read_text(encoding="utf-8"))
-                    try:
-                        out_json.unlink()  # 用后即删，保持块目录干净
-                    except OSError:
-                        pass
-                else:
-                    # 程序可能退出码为 0 但实际失败（如模型名不合法），必须显式报错
-                    tail = stderr.decode("utf-8", errors="ignore")[-400:]
-                    raise RuntimeError(f"whisper 未生成输出文件: {tail}")
-                break
-            except RuntimeError as exc:
-                if dev == "cuda":
-                    # CUDA 上任何失败都自动回退 CPU 重跑该块（CPU 慢但稳，单块自愈）
-                    print(f"[local-asr] {fp.name} CUDA 转写失败，回退 CPU 重试:\n{exc}")
-                    continue
-                print(f"[local-asr] {fp.name} 转写失败，跳过该块:\n{exc}")
-                break
-            except Exception as exc:  # noqa: BLE001
-                print(f"[local-asr] {fp.name} 转写失败，跳过该块: {exc}")
-                break
+        cmd = _build_cmd(bin_path, model_path, device, compute, threads,
+                         vad_threshold, str(chunks_dir), fp)
+        if device == "cuda":
+            parsed = await _run_cuda_with_retries(cmd, fp, compute)
+            if parsed is None and fallback_cpu:
+                print(f"[local-asr] {fp.name} CUDA 多次失败，按配置回退 CPU 兜底…")
+                cpu_cmd = _build_cmd(bin_path, model_path, "cpu", compute, threads,
+                                     vad_threshold, str(chunks_dir), fp)
+                parsed = await _run_once(cpu_cmd, fp)
+        else:
+            parsed = await _run_once(cmd, fp)
 
         if parsed is None:
             offset += duration

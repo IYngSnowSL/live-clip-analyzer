@@ -87,6 +87,7 @@ DEFAULTS: dict[str, Any] = {
         "local_compute_type": "default",  # default=程序自动；也可 float16 / int8_float16 / int8
         "local_cpu_threads": 6,     # CPU 模式线程数（仅回退 CPU 时生效）
         "local_vad_threshold": 0.4,  # Silero VAD 语音概率阈值（与卡卡字幕助手一致）
+        "local_fallback_cpu": False,  # true=CUDA 多次失败后回退 CPU；false=强制 CUDA（默认）
         "subtitle_max_chars": 30,    # 字幕每行最大字符数（卡卡式精细化断句）
     },
     "axle": {
