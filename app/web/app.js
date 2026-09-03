@@ -68,15 +68,17 @@ function renderTasks(tasks) {
         const progress = t.progress || 0;
         const active = t.id === currentTaskId ? " active" : "";
         const fileName = (t.video_path || "").split(/[\\/]/).pop() || t.video_path || "";
+        const pct = (t.status === "running" || t.status === "pending") ? `<span class="task-pct">${progress}%</span>` : "";
         return `
       <div class="task-item${active}" data-id="${t.id}" title="${escapeAttr(t.video_path || "")}（单击查看打轴结果）">
         <div class="info">
           <div class="name">${escapeHtml(fileName)}</div>
-          <div class="meta">${t.id} · ${escapeHtml(t.message || "")}</div>
+          <div class="meta">${escapeHtml(t.message || t.id)}</div>
         </div>
         <div class="row">
           <div class="progress"><div style="width:${progress}%"></div></div>
           ${taskStatusBadge(t)}
+          ${pct}
         </div>
         <div class="row">
           <button data-id="${t.id}" class="btn-delete ghost">删除</button>
@@ -84,10 +86,19 @@ function renderTasks(tasks) {
         </div>
       </div>`;
       }).join("")
-    : `<div class="muted">暂无任务，请先创建。</div>`;
+    : `<div class="task-empty">
+         <div class="task-empty-icon">🎬</div>
+         <div>还没有任务</div>
+         <div class="task-empty-sub">在首页输入视频路径，点击「开始打轴」</div>
+       </div>`;
 
   ["task-list", "win-task-list"].forEach((id) => {
     $(id).innerHTML = html;
+  });
+  // 列表标题带计数：任务列表 · N
+  const countText = tasks.length ? `任务列表 · ${tasks.length}` : "任务列表";
+  document.querySelectorAll(".home-tasks-title, .win-tasks-title").forEach((el) => {
+    el.textContent = countText;
   });
   document.querySelectorAll(".task-item").forEach((el) => {
     el.addEventListener("click", (e) => {
@@ -140,12 +151,35 @@ function renderReport(task) {
   }
 }
 
+function scoreClass(score) {
+  const s = Number(score) || 0;
+  if (s >= 9) return "score-high";
+  if (s >= 7) return "score-mid";
+  return "score-low";
+}
+
 function renderAxles(axles) {
   const scoreFilter = Number($("score-filter").value) || 0;
   const box = $("axles-container");
+  const countEl = $("score-filter-count");
+  if (countEl) {
+    countEl.textContent = axles.length ? `显示 ${axles.filter((a) => (Number(a.score) || 0) >= scoreFilter).length} / ${axles.length} 个轴` : "";
+  }
+  if (!axles.length) {
+    box.innerHTML = `<div class="empty-state">
+      <div class="empty-state-icon">✂️</div>
+      <div>暂无切片轴</div>
+      <div>任务完成后自动生成；若任务已完成，可点「重新打轴」调整参数重试</div>
+    </div>`;
+    return;
+  }
   const filtered = axles.filter((a) => Number(a.score || 0) >= scoreFilter);
   if (!filtered.length) {
-    box.innerHTML = `<div class="muted">没有符合条件的轴。</div>`;
+    box.innerHTML = `<div class="empty-state">
+      <div class="empty-state-icon">🔍</div>
+      <div>没有符合条件的轴</div>
+      <div>当前最低评分 ${scoreFilter} 分，试试调低筛选值</div>
+    </div>`;
     return;
   }
   box.innerHTML = filtered.map((a) => {
@@ -154,6 +188,7 @@ function renderAxles(axles) {
     const title = a.review_title || a.title || "";
     const duration = Math.max(0, Math.round(end - start));
     const reviewed = a.reviewed ? " · 已复核" : "";
+    const cls = scoreClass(a.score);
     const peaks = a.danmaku_peaks || [];
     const peaksHtml = peaks.length
       ? `<div class="axle-peaks">🔥 弹幕高峰：${peaks.map((p) =>
@@ -162,10 +197,10 @@ function renderAxles(axles) {
       : "";
     const copyText = `[${formatTs(start)} - ${formatTs(end)}] ${title}`;
     return `
-      <div class="axle-item">
+      <div class="axle-item ${cls}">
         <div class="head">
           <span class="title"><a class="time-link" target="_blank" href="/static/preview.html?task=${currentTaskId}&t=${start}">[${formatTs(start)} - ${formatTs(end)}]</a> ${escapeHtml(title)}</span>
-          <span class="badge">${a.score ?? 0} 分 · ${duration}s${reviewed}</span>
+          <span class="badge ${cls}">${a.score ?? 0} 分 · ${duration}s${reviewed}</span>
         </div>
         <div class="meta"><b>理由：</b>${escapeHtml(a.reason || "（无）")}</div>
         ${peaksHtml}
@@ -215,6 +250,33 @@ function toast(msg) {
   el.classList.add("show");
   clearTimeout(el._hideTimer);
   el._hideTimer = setTimeout(() => el.classList.remove("show"), 2500);
+}
+
+/* ---------------- 深浅主题 ---------------- */
+
+function currentTheme() {
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+}
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem("lca-theme", theme); } catch (e) { /* ignore */ }
+  updateThemeIcon();
+}
+
+function updateThemeIcon() {
+  const btn = $("btn-theme");
+  if (!btn) return;
+  const light = currentTheme() === "light";
+  btn.textContent = light ? "☀️" : "🌙";
+  btn.title = light ? "切换到深色主题" : "切换到浅色主题";
+}
+
+function initTheme() {
+  $("btn-theme").addEventListener("click", () => {
+    applyTheme(currentTheme() === "dark" ? "light" : "dark");
+  });
+  updateThemeIcon();
 }
 
 function buildAxlesTsv() {
@@ -438,6 +500,10 @@ function resetSubtitleState() {
   if (search) search.value = "";
   const pathEl = $("subtitle-path");
   if (pathEl) pathEl.textContent = "";
+  const countEl = $("subtitle-count");
+  if (countEl) countEl.textContent = "";
+  const copyBtn = $("btn-copy-srt-path");
+  if (copyBtn) copyBtn.disabled = true;
   // 回到「切片轴」标签页
   document.querySelectorAll(".win-tab").forEach((b) => {
     b.classList.toggle("active", b.dataset.tab === "axles");
@@ -458,8 +524,12 @@ async function loadSubtitle() {
     $("subtitle-search").value = "";
     $("subtitle-results").classList.add("hidden");
     $("subtitle-results").innerHTML = "";
+    const countEl = $("subtitle-count");
+    if (countEl) countEl.textContent = subtitleEntries.length ? `共 ${subtitleEntries.length} 句` : "";
+    $("btn-copy-srt-path").disabled = false;
   } catch (err) {
     box.textContent = "字幕文件尚未生成（ASR 转写完成后自动生成），错误：" + err.message;
+    $("btn-copy-srt-path").disabled = true;
   }
 }
 
@@ -1010,6 +1080,7 @@ function openConfig() {
 /* ---------------- 初始化 ---------------- */
 
 async function init() {
+  initTheme();
   $("btn-settings").addEventListener("click", openConfig);
   $("btn-back-home").addEventListener("click", closeReport);
   document.querySelectorAll(".btn-browse").forEach((btn) => {
@@ -1160,6 +1231,40 @@ async function init() {
   setInterval(() => {
     if (!document.hidden) loadTasks(); // 页面切后台时暂停轮询
   }, 5000);
+
+  // 多行路径粘贴：一次性粘贴多个视频路径自动解析成多选 chips
+  $("video_path").addEventListener("paste", (e) => {
+    const text = (e.clipboardData || window.clipboardData).getData("text") || "";
+    const lines = text.split(/\r?\n/).map((s) => s.trim().replace(/^["']+|["']+$/g, "")).filter(Boolean);
+    if (lines.length > 1) {
+      e.preventDefault();
+      addVideoChips(lines);
+      $("video_path").value = "";
+      toast(`已解析 ${lines.length} 个路径，加入待处理列表`);
+    }
+  });
+
+  // 字幕路径复制
+  $("btn-copy-srt-path").addEventListener("click", async () => {
+    const p = ($("subtitle-path").textContent || "").trim();
+    if (!p) { toast("暂无字幕路径"); return; }
+    try {
+      await navigator.clipboard.writeText(p);
+      toast("✅ 已复制字幕文件路径");
+    } catch (err) {
+      toast("复制失败：" + err.message);
+    }
+  });
+
+  // 报告窗口：滚动后显示「回到顶部」
+  const winMain = $("win-main");
+  const scrollTopBtn = $("btn-scroll-top");
+  winMain.addEventListener("scroll", () => {
+    scrollTopBtn.classList.toggle("hidden", winMain.scrollTop < 300);
+  });
+  scrollTopBtn.addEventListener("click", () => {
+    winMain.scrollTo({ top: 0, behavior: "smooth" });
+  });
 }
 
 async function loadTasks() {

@@ -4,10 +4,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>直播切片分析 · Live Clip Analyzer</title>
+  <script>
+    // 首帧前应用已保存的主题，避免闪烁
+    (function () {
+      try {
+        var t = localStorage.getItem("lca-theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch (e) { /* ignore */ }
+    })();
+  </script>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <!-- 右上角设置 -->
+  <!-- 右上角：主题切换 + 设置 -->
+  <button id="btn-theme" class="fab-theme" title="切换深浅主题">🌙</button>
   <button id="btn-settings" class="fab-settings" title="设置">⚙️</button>
 
   <!-- ═══════════ 第一页：首页 ═══════════ -->
@@ -69,27 +79,29 @@
         </div>
 
         <div class="report hidden" id="report-card">
-          <div class="report-head">
-            <div>
-              <div class="report-kicker">LIVE CLIP ANALYZER · AXLES</div>
-              <h2 id="report-title">打轴结果</h2>
+          <div class="report-toolbar">
+            <div class="report-head">
+              <div>
+                <div class="report-kicker">LIVE CLIP ANALYZER · AXLES</div>
+                <h2 id="report-title">打轴结果</h2>
+              </div>
+              <div class="actions">
+                <button id="btn-refresh" class="ghost">刷新</button>
+                <a id="link-video" class="btn ghost" target="_blank">预览视频</a>
+                <a id="link-csv" class="btn ghost" target="_blank">导出 CSV</a>
+              </div>
+              <div class="actions export-actions">
+                <label class="check-label"><input type="checkbox" id="export-accurate" /> 精切模式（重编码）</label>
+                <button id="btn-export-all" class="btn btn-primary">批量导出全部</button>
+              </div>
+              <div id="srt-hint" class="srt-hint hidden"></div>
             </div>
-            <div class="actions">
-              <button id="btn-refresh" class="ghost">刷新</button>
-              <a id="link-video" class="btn ghost" target="_blank">预览视频</a>
-              <a id="link-csv" class="btn ghost" target="_blank">导出 CSV</a>
-            </div>
-            <div class="actions export-actions">
-              <label class="check-label"><input type="checkbox" id="export-accurate" /> 精切模式（重编码）</label>
-              <button id="btn-export-all" class="btn btn-primary">批量导出全部</button>
-            </div>
-            <div id="srt-hint" class="srt-hint hidden"></div>
-          </div>
-          <div id="report-status" class="report-status"></div>
+            <div id="report-status" class="report-status"></div>
 
-          <div class="win-tabs">
-            <button class="win-tab active" data-tab="axles">✂️ 切片轴</button>
-            <button class="win-tab" data-tab="subtitle">📝 字幕文件</button>
+            <div class="win-tabs">
+              <button class="win-tab active" data-tab="axles">✂️ 切片轴</button>
+              <button class="win-tab" data-tab="subtitle">📝 字幕文件</button>
+            </div>
           </div>
 
           <div id="tab-axles">
@@ -101,6 +113,7 @@
                 <button id="btn-score-help" class="ghost score-help-btn" title="评分说明">ℹ️ 评分说明</button>
                 <label for="score-filter">最低评分</label>
                 <input type="number" id="score-filter" value="0" min="0" max="10" step="0.5" />
+                <span id="score-filter-count" class="muted"></span>
               </div>
             </div>
             <div id="score-help" class="score-help hidden">
@@ -128,6 +141,8 @@
               </div>
               <div class="filter-row subtitle-path-row">
                 <span id="subtitle-path" class="muted"></span>
+                <span id="subtitle-count" class="muted"></span>
+                <button id="btn-copy-srt-path" class="ghost" disabled title="复制字幕文件完整路径">📋 复制路径</button>
               </div>
               <div id="subtitle-results" class="subtitle-results hidden"></div>
               <pre id="subtitle-content" class="subtitle-view">点击「字幕文件」标签加载…</pre>
@@ -390,6 +405,8 @@
       </div>
     </div>
   </div>
+
+  <button id="btn-scroll-top" class="fab-scroll hidden" title="回到顶部">↑</button>
 
   <script src="/static/app.js"></script>
 </body>
