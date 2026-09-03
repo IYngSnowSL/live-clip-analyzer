@@ -106,8 +106,12 @@ async def _run_exe(cmd: list[str], timeout: float = 7200) -> tuple[bytes, bytes]
             pass
         raise
     if proc.returncode != 0:
-        tail = stderr.decode("utf-8", errors="ignore")[-800:]
-        raise RuntimeError(f"whisper 转写失败: {Path(cmd[-1]).name}...\n{tail}")
+        # exe 的错误信息可能打在 stdout 或 stderr，两者都要保留
+        out_tail = stdout.decode("utf-8", errors="ignore")[-800:].strip()
+        err_tail = stderr.decode("utf-8", errors="ignore")[-800:].strip()
+        tail = (err_tail or out_tail) or "(无输出)"
+        raise RuntimeError(
+            f"whisper 转写失败（退出码 {proc.returncode}）: {Path(cmd[-1]).name}\n{tail}")
     return stdout, stderr
 
 
@@ -212,11 +216,6 @@ def refine_segments(segments, max_chars: int = 30) -> list[dict]:
     return out
 
 
-def _looks_like_cuda_error(exc: Exception) -> bool:
-    msg = str(exc).lower()
-    return any(k in msg for k in ("cuda", "out of memory", "memory"))
-
-
 async def transcribe_chunks_local(chunks_dir: str | Path, cfg) -> list[dict]:
     """本地转录音频块目录（独立程序子进程，固定中文），返回精细化 segments。"""
     chunks_dir = Path(chunks_dir)
@@ -269,10 +268,11 @@ async def transcribe_chunks_local(chunks_dir: str | Path, cfg) -> list[dict]:
                     raise RuntimeError(f"whisper 未生成输出文件: {tail}")
                 break
             except RuntimeError as exc:
-                if dev == "cuda" and _looks_like_cuda_error(exc):
-                    print(f"[local-asr] {fp.name} CUDA 转写失败，回退 CPU 重试: {exc}")
+                if dev == "cuda":
+                    # CUDA 上任何失败都自动回退 CPU 重跑该块（CPU 慢但稳，单块自愈）
+                    print(f"[local-asr] {fp.name} CUDA 转写失败，回退 CPU 重试:\n{exc}")
                     continue
-                print(f"[local-asr] {fp.name} 转写失败，跳过该块: {exc}")
+                print(f"[local-asr] {fp.name} 转写失败，跳过该块:\n{exc}")
                 break
             except Exception as exc:  # noqa: BLE001
                 print(f"[local-asr] {fp.name} 转写失败，跳过该块: {exc}")
