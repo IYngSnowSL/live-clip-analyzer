@@ -3,7 +3,7 @@
 > **📢 郑重声明**
 > 本软件代码内容全部由 AI 生成。
 
-> v0.5.4 ｜ 本地运行 ｜ Windows / Linux / macOS ｜ [MIT License](LICENSE)
+> v0.5.5 ｜ 本地运行 ｜ Windows / Linux / macOS ｜ [MIT License](LICENSE)
 
 ---
 
@@ -170,6 +170,8 @@ asr:                          # 本地 faster-whisper（engine: local 时生效�
   local_compute_type: default # default=程序自动；也可 float16 / int8_float16 / int8
   local_vad_threshold: 0.4    # Silero VAD 语音概率阈值（与卡卡字幕助手一致）
   local_fallback_cpu: false   # true=多次失败后回退 CPU；false=强制 CUDA（默认，重试3次仍失败跳过该块）
+  local_batched: true         # 动态批解码（--batched）：解码阶段显著提速
+  local_beam_size: 5          # beam search 宽度（1=最快，5=默认质量）
   subtitle_max_chars: 30      # 字幕每行最大字符数（卡卡式精细化断句）
 ```
 

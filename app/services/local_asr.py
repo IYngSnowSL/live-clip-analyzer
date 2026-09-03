@@ -1,14 +1,17 @@
-"""本地 Faster-Whisper 转录（独立程序子进程方式，参考卡卡字幕助手 VideoCaptioner）。
+"""本地 Faster-Whisper 转录（独立程序子进程批量方式，参考卡卡字幕助手 VideoCaptioner）。
 
 设计（用户拍板 2026-09-03）：
 - 引擎：faster-whisper-xxl.exe（whisper-standalone-win 独立程序，自带 CUDA 栈），
   以子进程方式调用——转写崩溃/卡死完全隔离在子进程，不影响主服务
-  （此前进程内 Python 库 ctranslate2 CUDA 推理在本机死锁，改子进程方案根治）
+- 批量模式：一次 exe 调用转完任务的全部音频块（模型只加载一次），
+  失败重试用 --skip 只补跑缺失的块
 - 语言：固定中文（-l zh，与 VideoCaptioner 默认一致）
 - VAD：exe 内置 Silero VAD（--vad_filter，阈值 0.4 可配）
 - 精细化：exe 输出 JSON（词级时间戳）→ 本项目 refine_segments 卡卡式断句
   （每行 ≤30 字符可配；无词级数据自动按字符比例兜底）
-- 容错：**强制 CUDA**（默认）——失败自动同块重试（含显存预检等待），仍失败跳过该块；
+- 加速：--batched 动态批解码（默认开）；beam_size 可配（默认 5）
+- 容错：**强制 CUDA**（默认）——失败自动重试（含显存预检等待），
+  最后一次尝试自动降级为非 batched（显存更省）；仍失败跳过缺失块；
   可选 `local_fallback_cpu: true` 时最终回退 CPU；串行锁防止多任务同时抢单 GPU
 """
 from __future__ import annotations
@@ -55,11 +58,12 @@ def _find_whisper_bin(cfg) -> str:
 
 def _build_cmd(bin_path: str, model_path: str, device: str, compute: str,
                threads: int, vad_threshold: float, out_dir: str,
-               audio_path: Path) -> list[str]:
-    """构建转写命令行（参数用法与 VideoCaptioner 保持一致）。
+               batched: bool, beam_size: int, input_dir: Path) -> list[str]:
+    """构建批量转写命令行（参数用法与 VideoCaptioner 保持一致）。
 
     whisper-standalone-win 的 -m 接受"模型名"而非路径：
     它会在 --model_dir 下查找 faster-whisper-<名称> 目录。
+    输入传目录即批量模式：一次加载模型转完目录内全部媒体文件。
     """
     model_dir = str(Path(model_path).parent)
     model_name = Path(model_path).name
@@ -76,16 +80,21 @@ def _build_cmd(bin_path: str, model_path: str, device: str, compute: str,
         "--vad_threshold", f"{float(vad_threshold):.2f}",
         "--beep_off",
         "--print_progress",
+        "--model_preload",                 # 预加载模型（批量模式更顺滑）
     ]
     if compute and compute not in ("default", "auto"):
         cmd += ["--compute_type", compute]  # 默认交给 exe 自行选择
     if device == "cpu" and int(threads) > 0:
         cmd += ["--threads", str(int(threads))]
-    cmd.append(str(audio_path))
+    if batched and device == "cuda":
+        cmd += ["--batched"]               # 动态批解码：解码阶段显著提速
+    if int(beam_size) != 5:
+        cmd += ["--beam_size", str(int(beam_size))]
+    cmd.append(str(input_dir))
     return cmd
 
 
-async def _run_exe(cmd: list[str], timeout: float = 7200) -> tuple[bytes, bytes]:
+async def _run_exe(cmd: list[str], timeout: float = 14400) -> tuple[bytes, bytes]:
     """执行独立转写程序；超时/取消时杀掉子进程。返回 (stdout, stderr)。"""
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -97,7 +106,7 @@ async def _run_exe(cmd: list[str], timeout: float = 7200) -> tuple[bytes, bytes]
     except asyncio.TimeoutError:
         proc.kill()
         await proc.communicate()
-        raise TimeoutError(f"whisper 转写超时（>{timeout}s）: {Path(cmd[-1]).name}")
+        raise TimeoutError(f"whisper 转写超时（>{timeout}s）")
     except asyncio.CancelledError:
         proc.kill()
         try:
@@ -110,8 +119,7 @@ async def _run_exe(cmd: list[str], timeout: float = 7200) -> tuple[bytes, bytes]
         out_tail = stdout.decode("utf-8", errors="ignore")[-800:].strip()
         err_tail = stderr.decode("utf-8", errors="ignore")[-800:].strip()
         tail = (err_tail or out_tail) or "(无输出)"
-        raise RuntimeError(
-            f"whisper 转写失败（退出码 {proc.returncode}）: {Path(cmd[-1]).name}\n{tail}")
+        raise RuntimeError(f"whisper 转写失败（退出码 {proc.returncode}）:\n{tail}")
     return stdout, stderr
 
 
@@ -131,26 +139,10 @@ async def _free_vram_mb() -> int | None:
         return None
 
 
-def _vram_need_mb(compute: str) -> int:
+def _vram_need_mb(compute: str, batched: bool) -> int:
     """模型 + 推理工作区所需空闲显存的保守估计（MB）。"""
-    if "int8" in str(compute).lower():
-        return 2600
-    return 4400
-
-
-def _read_parsed(fp: Path, stderr: bytes) -> list[dict]:
-    """读取并解析独立程序生成的 JSON 输出，用后即删。"""
-    out_json = fp.with_suffix(".json")
-    if not out_json.exists():
-        # 程序可能退出码为 0 但实际失败（如模型名不合法），必须显式报错
-        tail = stderr.decode("utf-8", errors="ignore")[-400:]
-        raise RuntimeError(f"whisper 未生成输出文件: {tail}")
-    parsed = _parse_json_result(out_json.read_text(encoding="utf-8"))
-    try:
-        out_json.unlink()  # 用后即删，保持块目录干净
-    except OSError:
-        pass
-    return parsed
+    base = 2600 if "int8" in str(compute).lower() else 4400
+    return base + 800 if batched else base
 
 
 def _parse_json_result(json_text: str) -> list[dict]:
@@ -168,6 +160,62 @@ def _parse_json_result(json_text: str) -> list[dict]:
             "words": seg.get("words") or None,
         })
     return out
+
+
+def _collect_results(chunk_files: list[Path], results: dict) -> None:
+    """收集本轮批量转写已产出的 JSON（解析后删除），写入 results。"""
+    for fp in chunk_files:
+        if fp in results:
+            continue
+        out_json = fp.with_suffix(".json")
+        if not out_json.exists():
+            continue
+        try:
+            results[fp] = _parse_json_result(out_json.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            print(f"[local-asr] {fp.name} 输出解析失败: {exc}")
+        try:
+            out_json.unlink()  # 用后即删，保持块目录干净
+        except OSError:
+            pass
+
+
+async def _batch_transcribe(chunk_files: list[Path], make_cmd,
+                            variants: list, need_mb: int | None) -> dict:
+    """批量转写：按变体依次尝试，每次 --skip 只补跑缺失输出的块。
+
+    make_cmd(variant) -> 完整命令（不含 --skip）。
+    返回 {chunk_path: parsed}；缺失的块打印日志。
+    """
+    results: dict = {}
+    for attempt, variant in enumerate(variants, 1):
+        # 显存预检（CPU 变体 need_mb=None 跳过）
+        if need_mb is not None:
+            waited = 0
+            while waited < 600:
+                free = await _free_vram_mb()
+                if free is None or free >= need_mb:
+                    break
+                print(f"[local-asr] 空闲显存不足（{free}MB < 需约 {need_mb}MB），"
+                      f"等待释放… 已等 {waited}s", flush=True)
+                await asyncio.sleep(15)
+                waited += 15
+        cmd = make_cmd(variant) + ["--skip", str(chunk_files[0].parent)]
+        try:
+            async with _transcribe_lock:
+                _, _stderr = await _run_exe(cmd)
+        except RuntimeError as exc:
+            print(f"[local-asr] 批量转写第 {attempt} 次失败:\n{exc}")
+        _collect_results(chunk_files, results)
+        missing = [fp.name for fp in chunk_files if fp not in results]
+        if not missing:
+            break
+        if attempt < len(variants):
+            print(f"[local-asr] 还缺 {len(missing)} 块，继续重试（--skip 仅补缺失）…")
+    missing = [fp.name for fp in chunk_files if fp not in results]
+    if missing:
+        print(f"[local-asr] 批量转写结束，仍缺失块: {missing}")
+    return results
 
 
 def _to_seg_objects(parsed: list[dict]) -> list[SimpleNamespace]:
@@ -254,53 +302,8 @@ def refine_segments(segments, max_chars: int = 30) -> list[dict]:
     return out
 
 
-async def _run_cuda_with_retries(cmd: list[str], fp: Path, compute: str,
-                                 retries: int = 3) -> list[dict] | None:
-    """强制 CUDA：显存预检（不足则等待）+ 失败同块重试，不回退 CPU。
-
-    返回解析后的段落；多次重试仍失败返回 None（跳过该块）。
-    """
-    need = _vram_need_mb(compute)
-    for attempt in range(1, retries + 1):
-        # 显存预检：桌面应用（壁纸/浏览器等）可能临时占用显存，等待其释放
-        waited = 0
-        while waited < 600:
-            free = await _free_vram_mb()
-            if free is None or free >= need:
-                break
-            print(f"[local-asr] 空闲显存不足（{free}MB < 需约 {need}MB），"
-                  f"等待释放… 已等 {waited}s", flush=True)
-            await asyncio.sleep(15)
-            waited += 15
-        try:
-            async with _transcribe_lock:
-                _, stderr = await _run_exe(cmd)
-            return _read_parsed(fp, stderr)
-        except RuntimeError as exc:
-            if attempt >= retries:
-                print(f"[local-asr] {fp.name} CUDA 转写失败"
-                      f"（已重试 {retries} 次，跳过该块）:\n{exc}")
-                return None
-            wait_s = 20 * attempt
-            print(f"[local-asr] {fp.name} CUDA 转写失败"
-                  f"（第 {attempt}/{retries} 次），{wait_s}s 后重试:\n{exc}")
-            await asyncio.sleep(wait_s)
-    return None
-
-
-async def _run_once(cmd: list[str], fp: Path) -> list[dict] | None:
-    """单次执行（CPU 回退路径），失败返回 None。"""
-    try:
-        async with _transcribe_lock:
-            _, stderr = await _run_exe(cmd)
-        return _read_parsed(fp, stderr)
-    except Exception as exc:  # noqa: BLE001
-        print(f"[local-asr] {fp.name} 转写失败，跳过该块:\n{exc}")
-        return None
-
-
 async def transcribe_chunks_local(chunks_dir: str | Path, cfg) -> list[dict]:
-    """本地转录音频块目录（独立程序子进程，固定中文），返回精细化 segments。"""
+    """本地批量转录音频块目录（独立程序子进程，固定中文），返回精细化 segments。"""
     chunks_dir = Path(chunks_dir)
     files = sorted(chunks_dir.glob("chunk_*.mp3")) or sorted(chunks_dir.glob("*.mp3"))
     if not files:
@@ -315,37 +318,54 @@ async def transcribe_chunks_local(chunks_dir: str | Path, cfg) -> list[dict]:
     threads = int(getattr(cfg.asr, "local_cpu_threads", 6) or 6)
     vad_threshold = float(getattr(cfg.asr, "local_vad_threshold", 0.4) or 0.4)
     max_chars = int(getattr(cfg.asr, "subtitle_max_chars", 30) or 30)
-    # 默认强制 CUDA（失败同块重试，不回退）；显式开启时才允许 CPU 兜底
+    batched = bool(getattr(cfg.asr, "local_batched", True))
+    beam = int(getattr(cfg.asr, "local_beam_size", 5) or 5)
+    # 默认强制 CUDA（失败重试，不回退）；显式开启时才允许 CPU 兜底
     fallback_cpu = bool(getattr(cfg.asr, "local_fallback_cpu", False))
 
     print(f"[local-asr] 引擎: {bin_path}（device={device}, compute={compute}, "
-          f"回退CPU={fallback_cpu}）")
-    all_segments: list[dict] = []
-    offset = 0.0
+          f"batched={batched}, beam={beam}, 回退CPU={fallback_cpu}）")
 
+    # 预扫每块实际时长（时间偏移累计用）
+    durations: list[float] = []
     for fp in files:
-        duration = float(getattr(cfg.asr, "chunk_seconds", 1200))
+        dur = float(getattr(cfg.asr, "chunk_seconds", 1200))
         try:
             probed = await ffprobe_duration(fp)
             if probed > 0:
-                duration = probed
+                dur = probed
         except Exception:
             pass
+        durations.append(dur)
 
-        cmd = _build_cmd(bin_path, model_path, device, compute, threads,
-                         vad_threshold, str(chunks_dir), fp)
-        if device == "cuda":
-            parsed = await _run_cuda_with_retries(cmd, fp, compute)
-            if parsed is None and fallback_cpu:
-                print(f"[local-asr] {fp.name} CUDA 多次失败，按配置回退 CPU 兜底…")
-                cpu_cmd = _build_cmd(bin_path, model_path, "cpu", compute, threads,
-                                     vad_threshold, str(chunks_dir), fp)
-                parsed = await _run_once(cpu_cmd, fp)
-        else:
-            parsed = await _run_once(cmd, fp)
+    def make_cmd(dev: str, use_batched: bool) -> list[str]:
+        return _build_cmd(bin_path, model_path, dev, compute, threads,
+                          vad_threshold, str(chunks_dir), use_batched, beam,
+                          chunks_dir)
 
-        if parsed is None:
-            offset += duration
+    results: dict = {}
+    if device == "cuda":
+        # 前两次 batched（加速），最后一次降级非 batched（显存更省、更稳）
+        variants = [True, True, False] if batched else [False] * 3
+        results = await _batch_transcribe(
+            files, lambda v: make_cmd("cuda", v), variants,
+            need_mb=_vram_need_mb(compute, batched))
+        if len(results) < len(files) and fallback_cpu:
+            print("[local-asr] CUDA 多次失败，按配置回退 CPU 补跑缺失块…")
+            cpu_results = await _batch_transcribe(
+                files, lambda _v: make_cmd("cpu", False), [False], need_mb=None)
+            for fp, parsed in cpu_results.items():
+                results.setdefault(fp, parsed)
+    else:
+        results = await _batch_transcribe(
+            files, lambda _v: make_cmd("cpu", False), [False], need_mb=None)
+
+    all_segments: list[dict] = []
+    offset = 0.0
+    for fp, dur in zip(files, durations):
+        parsed = results.get(fp)
+        if not parsed:
+            offset += dur
             continue
         refined = refine_segments(_to_seg_objects(parsed), max_chars)
         for s in refined:
@@ -354,7 +374,7 @@ async def transcribe_chunks_local(chunks_dir: str | Path, cfg) -> list[dict]:
                 "end": round(offset + s["end"], 2),
                 "text": s["text"],
             })
-        offset += duration
+        offset += dur
         print(f"[local-asr] {fp.name} 完成: 精细化后 {len(refined)} 句")
 
     if not all_segments:
