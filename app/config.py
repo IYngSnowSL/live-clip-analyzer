@@ -78,7 +78,7 @@ DEFAULTS: dict[str, Any] = {
         },
     },
     "asr": {
-        "chunk_seconds": 1200,       # 音频切片长度（秒），长音频会自动分段
+        "chunk_seconds": 1800,       # 音频切片长度（秒）= 30 分钟，长音频会自动分段
         "language": "",              # 云端 ASR 语言代码；留空为自动识别
         "engine": "local",           # local=本地 faster-whisper（默认）/ api=云端 OpenAI 兼容 ASR
         "local_model_path": r"D:\AdobE\VideoCaptioner\AppData\models\faster-whisper-large-v2",
@@ -90,6 +90,7 @@ DEFAULTS: dict[str, Any] = {
         "local_fallback_cpu": False,  # true=CUDA 多次失败后回退 CPU；false=强制 CUDA（默认）
         "local_batched": True,       # 动态批解码（--batched）：解码阶段显著提速
         "local_beam_size": 5,        # beam search 宽度（1=最快，5=默认质量）
+        "local_hotwords": "",        # 热词（空格分隔）：专名/梗词识别增强；留空不启用
         "subtitle_max_chars": 30,    # 字幕每行最大字符数（卡卡式精细化断句）
     },
     "axle": {

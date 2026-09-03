@@ -5,8 +5,9 @@
   以子进程方式调用——转写崩溃/卡死完全隔离在子进程，不影响主服务
 - 批量模式：一次 exe 调用转完任务的全部音频块（模型只加载一次），
   失败重试用 --skip 只补跑缺失的块
-- 语言：固定中文（-l zh，与 VideoCaptioner 默认一致）
-- VAD：exe 内置 Silero VAD（--vad_filter，阈值 0.4 可配）
+- 语言：自动检测（不传 -l，exe 自动识别，中日混播友好；JSON 的 language 字段回读）
+- VAD：exe 内置 Silero VAD（--vad_filter，阈值 0.4 可配，静音切分 500ms）
+- 热词：--hotwords 专名/梗词增强（local_hotwords 配置，空格分隔）
 - 精细化：exe 输出 JSON（词级时间戳）→ 本项目 refine_segments 卡卡式断句
   （每行 ≤30 字符可配；无词级数据自动按字符比例兜底）
 - 加速：--batched 动态批解码（默认开）；beam_size 可配（默认 5）
@@ -58,8 +59,9 @@ def _find_whisper_bin(cfg) -> str:
 
 def _build_cmd(bin_path: str, model_path: str, device: str, compute: str,
                threads: int, vad_threshold: float, out_dir: str,
-               batched: bool, beam_size: int, input_dir: Path) -> list[str]:
-    """构建批量转写命令行（参数用法与 VideoCaptioner 保持一致）。
+               batched: bool, beam_size: int, hotwords: str,
+               input_dir: Path) -> list[str]:
+    """构建批量转写命令行（参数用法参考 VideoCaptioner / MAW）。
 
     whisper-standalone-win 的 -m 接受"模型名"而非路径：
     它会在 --model_dir 下查找 faster-whisper-<名称> 目录。
@@ -71,13 +73,15 @@ def _build_cmd(bin_path: str, model_path: str, device: str, compute: str,
         model_name = model_name[len("faster-whisper-"):]
     cmd = [
         bin_path, "-m", model_name, "--model_dir", model_dir,
-        "-l", "zh",                        # 固定中文（与 VideoCaptioner 默认一致）
         "-d", device,
         "-o", out_dir,
         "--output_format", "json",
         "--word_timestamps", "true",       # 词级时间戳 → 卡卡式精细化
         "--vad_filter", "true",
         "--vad_threshold", f"{float(vad_threshold):.2f}",
+        "--vad_min_silence_duration_ms", "500",  # MAW 经验值：静音切分更细
+        # MAW 经验：长音频中一句幻觉会被跨窗上下文持续放大，关闭更稳
+        "--condition_on_previous_text", "false",
         "--beep_off",
         "--print_progress",
         "--model_preload",                 # 预加载模型（批量模式更顺滑）
@@ -90,6 +94,8 @@ def _build_cmd(bin_path: str, model_path: str, device: str, compute: str,
         cmd += ["--batched"]               # 动态批解码：解码阶段显著提速
     if int(beam_size) != 5:
         cmd += ["--beam_size", str(int(beam_size))]
+    if hotwords.strip():
+        cmd += ["--hotwords", " ".join(hotwords.split())]
     cmd.append(str(input_dir))
     return cmd
 
@@ -145,9 +151,10 @@ def _vram_need_mb(compute: str, batched: bool) -> int:
     return base + 800 if batched else base
 
 
-def _parse_json_result(json_text: str) -> list[dict]:
-    """解析独立程序的 JSON 输出 → [{start, end, text, words?}]。"""
+def _parse_json_result(json_text: str) -> tuple[list[dict], str]:
+    """解析独立程序的 JSON 输出 → (段落列表, 检测到的语言)。"""
     data = json.loads(json_text)
+    language = str(data.get("language") or "")
     out: list[dict] = []
     for seg in data.get("segments") or []:
         text = (seg.get("text") or "").strip()
@@ -159,7 +166,7 @@ def _parse_json_result(json_text: str) -> list[dict]:
             "text": text,
             "words": seg.get("words") or None,
         })
-    return out
+    return out, language
 
 
 def _collect_results(chunk_files: list[Path], results: dict) -> None:
@@ -171,7 +178,9 @@ def _collect_results(chunk_files: list[Path], results: dict) -> None:
         if not out_json.exists():
             continue
         try:
-            results[fp] = _parse_json_result(out_json.read_text(encoding="utf-8"))
+            parsed, language = _parse_json_result(out_json.read_text(encoding="utf-8"))
+            results[fp] = parsed
+            print(f"[local-asr] {fp.name} 语言={language or '未知'}，段落 {len(parsed)} 个")
         except Exception as exc:  # noqa: BLE001
             print(f"[local-asr] {fp.name} 输出解析失败: {exc}")
         try:
@@ -320,16 +329,18 @@ async def transcribe_chunks_local(chunks_dir: str | Path, cfg) -> list[dict]:
     max_chars = int(getattr(cfg.asr, "subtitle_max_chars", 30) or 30)
     batched = bool(getattr(cfg.asr, "local_batched", True))
     beam = int(getattr(cfg.asr, "local_beam_size", 5) or 5)
+    hotwords = str(getattr(cfg.asr, "local_hotwords", "") or "").strip()
     # 默认强制 CUDA（失败重试，不回退）；显式开启时才允许 CPU 兜底
     fallback_cpu = bool(getattr(cfg.asr, "local_fallback_cpu", False))
 
     print(f"[local-asr] 引擎: {bin_path}（device={device}, compute={compute}, "
-          f"batched={batched}, beam={beam}, 回退CPU={fallback_cpu}）")
+          f"batched={batched}, beam={beam}, 热词={hotwords or '无'}, "
+          f"回退CPU={fallback_cpu}）")
 
     # 预扫每块实际时长（时间偏移累计用）
     durations: list[float] = []
     for fp in files:
-        dur = float(getattr(cfg.asr, "chunk_seconds", 1200))
+        dur = float(getattr(cfg.asr, "chunk_seconds", 1800))
         try:
             probed = await ffprobe_duration(fp)
             if probed > 0:
@@ -341,7 +352,7 @@ async def transcribe_chunks_local(chunks_dir: str | Path, cfg) -> list[dict]:
     def make_cmd(dev: str, use_batched: bool) -> list[str]:
         return _build_cmd(bin_path, model_path, dev, compute, threads,
                           vad_threshold, str(chunks_dir), use_batched, beam,
-                          chunks_dir)
+                          hotwords, chunks_dir)
 
     results: dict = {}
     if device == "cuda":

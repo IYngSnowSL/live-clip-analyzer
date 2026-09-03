@@ -3,7 +3,7 @@
 > **📢 郑重声明**
 > 本软件代码内容全部由 AI 生成。
 
-> v0.5.5 ｜ 本地运行 ｜ Windows / Linux / macOS ｜ [MIT License](LICENSE)
+> v0.5.6 ｜ 本地运行 ｜ Windows / Linux / macOS ｜ [MIT License](LICENSE)
 
 ---
 
@@ -172,6 +172,7 @@ asr:                          # 本地 faster-whisper（engine: local 时生效�
   local_fallback_cpu: false   # true=多次失败后回退 CPU；false=强制 CUDA（默认，重试3次仍失败跳过该块）
   local_batched: true         # 动态批解码（--batched）：解码阶段显著提速
   local_beam_size: 5          # beam search 宽度（1=最快，5=默认质量）
+  local_hotwords: ""          # 热词（空格分隔）：专名/梗词识别增强；留空不启用
   subtitle_max_chars: 30      # 字幕每行最大字符数（卡卡式精细化断句）
 ```
 
@@ -246,8 +247,9 @@ live-clip-analyzer/
 
 | 项目 | 协议 | 借鉴内容 |
 |---|---|---|
-| [VideoCaptioner（卡卡字幕助手）](https://github.com/WEIFENG2333/VideoCaptioner) | GPL-3.0 | 子进程调用 faster-whisper 独立程序做转写的整体方式与参数用法（`-l zh`、VAD 阈值 0.4、断句宽度 30 字符等） |
+| [VideoCaptioner（卡卡字幕助手）](https://github.com/WEIFENG2333/VideoCaptioner) | GPL-3.0 | 子进程调用 faster-whisper 独立程序做转写的整体方式与参数用法（VAD 阈值 0.4、断句宽度 30 字符等） |
 | [whisper-standalone-win](https://github.com/Purfview/whisper-standalone-win) | MIT | 被调用的独立转写程序 `faster-whisper-xxl.exe` 本体 |
+| [moys-asr-workflow（MAW）](https://github.com/IYngSnowSL/moys-asr-workflow) | AGPL-3.0 | 仅借鉴思路与经验参数值（语言自动检测、关闭跨窗上下文、VAD 静音 500ms、热词），未复制任何代码 |
 
 本项目默认直接复用 VideoCaptioner 已下载的模型与程序（`asr.local_model_path` /
 `asr.local_whisper_bin` 均指向其安装目录），二者作为外部组件按各自协议分发；

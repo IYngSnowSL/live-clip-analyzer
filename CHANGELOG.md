@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.5.6 — 借鉴 MAW（moys-asr-workflow）的 ASR 经验：自动语言 + 质量参数 + 热词
+
+- **语言改自动检测**：不再固定 `-l zh`，exe 自动识别（JSON 的 language 字段回读并打日志），
+  中日混播内容自动适配（借鉴 MAW WhisperEngine 的做法）
+- **关闭跨窗上下文**：`--condition_on_previous_text false`——MAW 经验：长音频中
+  一句幻觉会被跨 30 秒窗口持续放大，关闭后更稳（质量提升、无速度代价）
+- **VAD 静音切分对齐 500ms**：`--vad_min_silence_duration_ms 500`（MAW 经验值，
+  静音切分更细、字幕密度更高）
+- **热词功能**：新配置 `asr.local_hotwords`（空格分隔），专名/梗词识别增强，
+  走 exe 的 `--hotwords`
+- **音频块加大到 30 分钟**：`asr.chunk_seconds` 1200 → 1800（折中方案：
+  保留 --skip 失败隔离，文件数减半、模型加载次数减半）
+- README 致谢表补充 MAW（AGPL-3.0）——仅借鉴思路与参数值，未复制代码
+
 ## v0.5.5 — 本地 ASR 效率优化：批量模式 + 动态批解码
 
 - **目录批量模式**：一次 exe 调用转完任务的全部音频块，模型只加载一次
