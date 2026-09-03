@@ -208,7 +208,8 @@ async def _batch_transcribe(chunk_files: list[Path], make_cmd,
                       f"等待释放… 已等 {waited}s", flush=True)
                 await asyncio.sleep(15)
                 waited += 15
-        cmd = make_cmd(variant) + ["--skip", str(chunk_files[0].parent)]
+        # make_cmd 已包含输入目录，这里只追加布尔开关 --skip（跳过已有输出的文件）
+        cmd = make_cmd(variant) + ["--skip"]
         try:
             async with _transcribe_lock:
                 _, _stderr = await _run_exe(cmd)

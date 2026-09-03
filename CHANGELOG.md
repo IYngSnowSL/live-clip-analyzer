@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.5.8 — 修复批量转写命令重复传输入目录导致 unrecognized arguments
+
+- v0.5.5 引入的 `_batch_transcribe` 在 make_cmd 已追加输入目录的情况下，
+  又追加了一次 `--skip <目录>`——目录出现两次，第二次被 exe 判为
+  unrecognized arguments（退出码 2），批量转写从未真正跑起来
+- 修复：只追加布尔开关 `--skip`（目录由 make_cmd 提供）
+- 实测验证（与生产完全一致的参数）：目录批量一次转完 2 块；
+  --skip 重跑仅补缺失块（12.5s），既有输出跳过
+- 版本 0.5.8
+
 ## v0.5.7 — 修复 --model_preload 参数错误导致的转写启动失败
 
 - v0.5.6 引入的 `--model_preload` 实为**需带值的参数**（none_or_str2bool），
