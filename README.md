@@ -3,7 +3,7 @@
 > **📢 郑重声明**
 > 本软件代码内容全部由 AI 生成。
 
-> v0.5.1 ｜ 本地运行 ｜ Windows / Linux / macOS ｜ [MIT License](LICENSE)
+> v0.5.2 ｜ 本地运行 ｜ Windows / Linux / macOS ｜ [MIT License](LICENSE)
 
 ---
 
@@ -67,17 +67,18 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-本地 ASR 引擎（可选，不用云端 ASR 时安装）：
+本地 ASR 引擎（可选，不用云端 ASR 时使用）：
 
 ```bat
-:: CPU 版
-pip install faster-whisper
-:: CUDA 版（NVIDIA 显卡，8GB 显存以上推荐；自带 cuDNN，无需单独装 CUDA Toolkit）
-pip install "ctranslate2[cuda12]" faster-whisper
+:: 需要外部独立程序 faster-whisper-xxl.exe（whisper-standalone-win，自带 CUDA 栈）
+:: 最简单的方式：安装卡卡字幕助手 VideoCaptioner 后直接复用其已下载的程序与模型，
+:: 本软件会自动探测 D:\AdobE\VideoCaptioner\resource\bin\Faster-Whisper-XXL\faster-whisper-xxl.exe
+:: 也可手动指定：config.yaml 的 asr.local_whisper_bin 填写 exe 路径
 ```
 
-模型文件放到 `config.yaml` 里 `asr.local_model_path` 指向的目录（也可直接复用
-卡卡字幕助手已下载的模型目录）。
+模型文件放到 `config.yaml` 里 `asr.local_model_path` 指向的目录（默认直接复用
+卡卡字幕助手已下载的 `faster-whisper-large-v2` 模型目录）。转写以子进程方式调用
+独立程序，崩溃/卡死不会影响本服务。
 
 ### 配置 AI 接口
 
@@ -164,8 +165,10 @@ axle:
 asr:                          # 本地 faster-whisper（engine: local 时生效）
   engine: local               # local=本地（免费）/ api=云端 OpenAI 兼容 ASR
   local_model_path: D:\AdobE\VideoCaptioner\AppData\models\faster-whisper-large-v2
-  local_device: cuda          # cuda / cpu（CUDA 不可用时自动回退 CPU）
-  local_compute_type: float16 # CUDA: float16 / int8_float16；CPU: int8
+  local_whisper_bin: ""       # 独立转写程序路径；留空自动探测 VideoCaptioner 目录 / PATH
+  local_device: cuda          # cuda / cpu（CUDA 块失败自动回退 CPU 重试）
+  local_compute_type: default # default=程序自动；也可 float16 / int8_float16 / int8
+  local_vad_threshold: 0.4    # Silero VAD 语音概率阈值（与卡卡字幕助手一致）
   subtitle_max_chars: 30      # 字幕每行最大字符数（卡卡式精细化断句）
 ```
 
@@ -232,6 +235,20 @@ live-clip-analyzer/
 
 - [`docs/adr/`](docs/adr/)：架构决策记录（0006 推倒重建为当前架构基准）
 - [`CONTEXT.md`](CONTEXT.md)：领域术语表（轴 / 内容点 / 打轴 / 复核等定义）
+
+## 🙏 致谢与开源协议
+
+本地 ASR 引擎以**子进程方式调用外部独立程序**，借鉴了以下开源项目的做法（仅引用
+命令行接口用法，未复制其代码）：
+
+| 项目 | 协议 | 借鉴内容 |
+|---|---|---|
+| [VideoCaptioner（卡卡字幕助手）](https://github.com/WEIFENG2333/VideoCaptioner) | GPL-3.0 | 子进程调用 faster-whisper 独立程序做转写的整体方式与参数用法（`-l zh`、VAD 阈值 0.4、断句宽度 30 字符等） |
+| [whisper-standalone-win](https://github.com/Purfview/whisper-standalone-win) | MIT | 被调用的独立转写程序 `faster-whisper-xxl.exe` 本体 |
+
+本项目默认直接复用 VideoCaptioner 已下载的模型与程序（`asr.local_model_path` /
+`asr.local_whisper_bin` 均指向其安装目录），二者作为外部组件按各自协议分发；
+本项目代码依据 [MIT License](LICENSE) 开源。
 
 ## ⚖️ 许可
 

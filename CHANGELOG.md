@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.5.2 — 本地 ASR 改为独立程序子进程方式（复刻卡卡字幕助手）
+
+- **根治 CUDA 转写死锁**：v0.5.1 之后实测发现，卡死发生在进程内 Python 库
+  ctranslate2 的 CUDA 推理首次调用（非并发问题，CPU 路径完全正常）。
+  本版把本地 ASR 引擎改为**子进程调用独立程序 `faster-whisper-xxl.exe`**
+  （whisper-standalone-win，卡卡字幕助手 VideoCaptioner 同款做法）：
+  转写崩溃/卡死完全隔离在子进程，主服务不再被冻结
+- **参数复刻 VideoCaptioner**：`-l zh` 固定中文、VAD 阈值 0.4、
+  词级时间戳 + 本项目卡卡式断句精细化（JSON 输出解析）
+- **容错**：CUDA 块失败自动回退 CPU 重试该块；单块失败跳过；串行锁保留
+- **新配置**：`asr.local_whisper_bin`（exe 路径，留空自动探测 VideoCaptioner 目录/PATH）、
+  `asr.local_vad_threshold`（默认 0.4）；`local_compute_type` 默认改为 `default`
+  （交给 exe 自动选择）
+- **文档**：README 新增「致谢与开源协议」——VideoCaptioner（GPL-3.0）与
+  whisper-standalone-win（MIT）的借鉴说明；requirements.txt 移除 Python 版
+  faster-whisper 安装指引（不再需要）
+
 ## v0.5.1 — 修复本地 ASR 多任务并发转写死锁
 
 - **修复严重 bug**：批量任务并发转写时，多个任务在同一共享 WhisperModel 实例上
