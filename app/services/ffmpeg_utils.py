@@ -35,6 +35,14 @@ async def run_async(cmd: list[str], timeout: float = 7200) -> tuple[bytes, bytes
         proc.kill()
         await proc.communicate()
         raise TimeoutError(f"命令超时（>{timeout}s）: {' '.join(cmd[:6])}")
+    except asyncio.CancelledError:
+        # 任务被取消（如用户强删任务）时同步杀掉子进程，避免孤儿 ffmpeg
+        proc.kill()
+        try:
+            await proc.wait()
+        except Exception:  # noqa: BLE001
+            pass
+        raise
     if proc.returncode != 0:
         tail = stderr.decode("utf-8", errors="ignore")[-800:]
         raise RuntimeError(f"FFmpeg 执行失败: {' '.join(cmd[:6])}...\n{tail}")

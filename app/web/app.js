@@ -3,6 +3,7 @@
 let currentTaskId = null;
 let currentAxles = [];
 let timer = null;
+let reportToken = 0; // 报告打开令牌：守卫快速切换任务时的异步竞态
 
 const $ = (id) => document.getElementById(id);
 
@@ -237,6 +238,7 @@ function openWindow() {
 
 function closeReport() {
   document.body.classList.remove("view-report");
+  reportToken++; // 使在飞的 openReport/轮询回调失效
   currentTaskId = null;
   $("report-card").classList.add("hidden");
   $("win-empty").classList.remove("hidden");
@@ -247,21 +249,30 @@ function closeReport() {
 }
 
 async function openReport(taskId) {
+  const token = ++reportToken;
   currentTaskId = taskId;
+  resetSubtitleState();
   openWindow();
   const task = await api(`/api/tasks/${taskId}`);
+  if (token !== reportToken) return;
   renderReport(task);
   await loadTasks();
+  if (token !== reportToken) return;
   $("export-results").innerHTML = `<div class="muted">暂无导出结果。</div>`;
   await loadExportResults();
-  await refreshReportData();
-  startPolling(taskId);
+  if (token !== reportToken) return;
+  await refreshReportData(taskId);
+  if (token !== reportToken) return;
+  startPolling(taskId, token);
 }
 
-async function refreshReportData() {
-  if (!currentTaskId) return;
-  currentAxles = await api(`/api/tasks/${currentTaskId}/axles`);
-  renderAxles(currentAxles);
+async function refreshReportData(taskId) {
+  const tid = taskId || currentTaskId;
+  if (!tid) return;
+  const axles = await api(`/api/tasks/${tid}/axles`);
+  if (currentTaskId !== tid) return; // 已被切换到其他任务，丢弃过期数据
+  currentAxles = axles;
+  renderAxles(axles);
 }
 
 /* ---------------- 导出 ---------------- */
@@ -323,20 +334,25 @@ async function exportAxleIds(axleIds, btn) {
   }
 }
 
-function startPolling(taskId) {
+function startPolling(taskId, token) {
   if (timer) clearInterval(timer);
+  const myToken = token === undefined ? reportToken : token;
   timer = setInterval(async () => {
     try {
       const task = await api(`/api/tasks/${taskId}`);
+      // 报告已切换到其他任务：静默退出，不碰新任务的 timer / 状态
+      if (myToken !== reportToken || currentTaskId !== taskId) return;
       $("report-status").textContent = `状态：${task.status}（${task.progress || 0}%） · ${task.message || ""}`;
       if (task.status === "done" || task.status === "failed") {
         clearInterval(timer);
         timer = null;
-        await refreshReportData();
+        await refreshReportData(taskId);
       }
     } catch (e) {
-      clearInterval(timer);
-      timer = null;
+      if (myToken === reportToken) {
+        clearInterval(timer);
+        timer = null;
+      }
     }
   }, 3000);
 }
@@ -388,6 +404,29 @@ function parseSrt(content) {
 
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function resetSubtitleState() {
+  // 打开新任务时清空字幕页状态，避免展示上一个任务的陈旧字幕
+  subtitleContentRaw = "";
+  subtitleEntries = [];
+  const box = $("subtitle-content");
+  if (box) box.textContent = "";
+  const results = $("subtitle-results");
+  if (results) {
+    results.classList.add("hidden");
+    results.innerHTML = "";
+  }
+  const search = $("subtitle-search");
+  if (search) search.value = "";
+  const pathEl = $("subtitle-path");
+  if (pathEl) pathEl.textContent = "";
+  // 回到「切片轴」标签页
+  document.querySelectorAll(".win-tab").forEach((b) => {
+    b.classList.toggle("active", b.dataset.tab === "axles");
+  });
+  $("tab-axles").classList.remove("hidden");
+  $("tab-subtitle").classList.add("hidden");
 }
 
 async function loadSubtitle() {

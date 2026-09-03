@@ -16,18 +16,46 @@ from ..services.ai_client import AIClient
 from ..services.asr import save_srt, transcribe_chunks
 from ..services.axle import build_axles
 
-_background_tasks: set[asyncio.Task] = set()
+_background_tasks: dict[str, asyncio.Task] = {}
 
 
 def start_task(task_id: str) -> None:
     """在事件循环中启动后台任务。"""
     task = asyncio.create_task(run_task(task_id))
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    _background_tasks[task_id] = task
+    task.add_done_callback(lambda _t: _background_tasks.pop(task_id, None))
+
+
+def cancel_task(task_id: str) -> bool:
+    """取消指定任务在飞的后台协程（删除任务时调用）。返回是否真的取消了。"""
+    task = _background_tasks.get(task_id)
+    if task and not task.done():
+        task.cancel()
+        return True
+    return False
 
 
 def _task_dir(cfg, task_id: str) -> Path:
     return Path(cfg.data.tasks_dir) / task_id
+
+
+async def _annotate_danmaku(task_id: str, task: dict, full_axles: list[dict]) -> None:
+    """任务关联弹幕时解析弹幕并标注各轴弹幕高峰（失败不影响打轴）。"""
+    if not task.get("danmaku_path"):
+        return
+    try:
+        from ..services.danmaku import build_density, find_peaks, parse_danmaku
+        dms = await asyncio.to_thread(
+            parse_danmaku, task["danmaku_path"],
+            float(task.get("offset_seconds") or 0))
+        density = build_density(dms)
+        for a in full_axles:
+            a["danmaku_peaks"] = find_peaks(density, a["start"], a["end"])
+        if dms:
+            update_task(task_id, progress=80,
+                        message=f"弹幕解析完成（{len(dms)} 条），已标注各轴弹幕高峰")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[danmaku] 弹幕高峰计算失败（不影响打轴）: {exc}")
 
 
 async def run_task(task_id: str) -> None:
@@ -111,20 +139,7 @@ async def run_task(task_id: str) -> None:
         ]
 
         # 4.5 弹幕高峰标注（任务关联了弹幕时）
-        if task.get("danmaku_path"):
-            try:
-                from ..services.danmaku import build_density, find_peaks, parse_danmaku
-                dms = await asyncio.to_thread(
-                    parse_danmaku, task["danmaku_path"],
-                    float(task.get("offset_seconds") or 0))
-                density = build_density(dms)
-                for a in full_axles:
-                    a["danmaku_peaks"] = find_peaks(density, a["start"], a["end"])
-                if dms:
-                    update_task(task_id, progress=80,
-                                message=f"弹幕解析完成（{len(dms)} 条），已标注各轴弹幕高峰")
-            except Exception as exc:  # noqa: BLE001
-                print(f"[danmaku] 弹幕高峰计算失败（不影响打轴）: {exc}")
+        await _annotate_danmaku(task_id, task, full_axles)
 
         save_axles(task_id, full_axles)
         update_task(task_id, progress=95, message=f"打轴完成，共 {len(full_axles)} 个切片轴")
@@ -146,8 +161,8 @@ async def run_task(task_id: str) -> None:
 def start_reaxle(task_id: str, overrides: dict | None = None) -> None:
     """在事件循环中启动重新打轴任务。"""
     task = asyncio.create_task(run_reaxle(task_id, overrides))
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    _background_tasks[task_id] = task
+    task.add_done_callback(lambda _t: _background_tasks.pop(task_id, None))
 
 
 async def run_reaxle(task_id: str, overrides: dict | None = None) -> None:
@@ -189,6 +204,7 @@ async def run_reaxle(task_id: str, overrides: dict | None = None) -> None:
             {"task_id": task_id, "axle_index": i, **a}
             for i, a in enumerate(axles)
         ]
+        await _annotate_danmaku(task_id, task, full_axles)
         save_axles(task_id, full_axles)
         update_task(task_id, status="done", progress=100,
                     message=f"重新打轴完成，共 {len(full_axles)} 个切片轴")

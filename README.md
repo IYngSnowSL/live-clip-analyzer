@@ -3,7 +3,7 @@
 > **📢 郑重声明**
 > 本软件代码内容全部由 AI 生成。
 
-> v0.4.2 ｜ 本地运行 ｜ Windows / Linux / macOS ｜ [MIT License](LICENSE)
+> v0.4.8 ｜ 本地运行 ｜ Windows / Linux / macOS ｜ [MIT License](LICENSE)
 
 ---
 
@@ -55,7 +55,8 @@
 
 - Python 3.10+
 - FFmpeg（`ffmpeg` / `ffprobe` 已加入 PATH）
-- OpenAI 兼容 API：**LLM**（找内容点）+ **ASR**（语音转写）两种模型
+- OpenAI 兼容 API：**LLM**（找内容点，必需）
+- ASR 二选一：本地 faster-whisper（免费，NVIDIA 显卡可 CUDA 加速）/ 云端 OpenAI 兼容 ASR API
 
 ### 安装
 
@@ -65,6 +66,18 @@ python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
 ```
+
+本地 ASR 引擎（可选，不用云端 ASR 时安装）：
+
+```bat
+:: CPU 版
+pip install faster-whisper
+:: CUDA 版（NVIDIA 显卡，8GB 显存以上推荐；自带 cuDNN，无需单独装 CUDA Toolkit）
+pip install "ctranslate2[cuda12]" faster-whisper
+```
+
+模型文件放到 `config.yaml` 里 `asr.local_model_path` 指向的目录（也可直接复用
+卡卡字幕助手已下载的模型目录）。
 
 ### 配置 AI 接口
 
@@ -146,6 +159,13 @@ axle:
   window_seconds: 600         # LLM 找内容点的分窗大小
   max_axles: 100              # 最多输出轴数
   silence_threshold_db: -35   # 静音检测阈值
+
+asr:                          # 本地 faster-whisper（engine: local 时生效）
+  engine: local               # local=本地（免费）/ api=云端 OpenAI 兼容 ASR
+  local_model_path: D:\AdobE\VideoCaptioner\AppData\models\faster-whisper-large-v2
+  local_device: cuda          # cuda / cpu（CUDA 不可用时自动回退 CPU）
+  local_compute_type: float16 # CUDA: float16 / int8_float16；CPU: int8
+  subtitle_max_chars: 30      # 字幕每行最大字符数（卡卡式精细化断句）
 ```
 
 环境变量：`LCA_BASE_URL` / `LCA_API_KEY` / `LCA_LLM_MODEL` / `LCA_ASR_MODEL` 等。
@@ -165,9 +185,14 @@ axle:
 | GET | `/api/tasks/{id}/subtitle` | SRT 字幕内容与路径 |
 | GET | `/api/tasks/{id}/video` | 视频预览（支持 Range 跳转） |
 | POST | `/api/tasks/{id}/export` | 导出切片（`axle_ids` 或自定义 `clips`） |
+| GET | `/api/tasks/{id}/exports` | 导出结果列表 |
+| GET | `/api/tasks/{id}/exports/{filename}` | 下载导出切片 |
 | GET/PUT | `/api/config` | 配置读写（密钥脱敏） |
 | POST | `/api/config/test-connection` | 连通测试，返回供应商模型列表 |
 | GET | `/api/files/ls?path=…` | 本地文件浏览 |
+| GET | `/api/files/drives` | 磁盘盘符列表 |
+| GET | `/api/files/sibling-danmaku?video_path=…` | 查找视频同目录同名弹幕 |
+| GET | `/api/files/media-info?path=…` | 读取视频时长等媒体信息 |
 
 ## 🛡️ 隐私与安全
 
@@ -187,7 +212,9 @@ live-clip-analyzer/
 │   ├── api/                     # 任务 / 轴 / 导出 / 配置 / 文件浏览
 │   ├── services/
 │   │   ├── axle.py              # ★ 自动打轴核心（找内容点 + 合并 + 静音精修）
-│   │   ├── asr.py               # 语音转写 + SRT 字幕生成
+│   │   ├── asr.py               # 云端 ASR + SRT 字幕生成
+│   │   ├── local_asr.py         # 本地 faster-whisper（CUDA 加速，自动回退 CPU）
+│   │   ├── danmaku.py           # 弹幕流式解析 + 密度高峰标注
 │   │   ├── ai_client.py         # AI 能力门面（三模型可独立端点）
 │   │   ├── ffmpeg_utils.py      # ffmpeg 封装
 │   │   └── exporter.py          # 切片导出

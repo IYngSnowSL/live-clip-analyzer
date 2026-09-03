@@ -71,7 +71,16 @@ class AIClient:
         client = self._client(kind)
         last_exc: AIError | None = None
         for attempt in range(retries):
-            resp = await client.post(path, json=payload)
+            try:
+                resp = await client.post(path, json=payload)
+            except httpx.HTTPError as exc:
+                # 传输层异常（连接失败/超时/DNS）同样包装并重试，
+                # 避免打轴路径因一次网络抖动整体失败
+                last_exc = AIError(f"API {path} 网络错误: {type(exc).__name__}: {exc}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                raise last_exc
             if resp.status_code < 400:
                 try:
                     return resp.json()
@@ -183,9 +192,16 @@ class AIClient:
         client = self._client("asr")
         last_exc: AIError | None = None
         for attempt in range(retries):
-            with open(path, "rb") as f:
-                files = {"file": (path.name, f, mime)}
-                resp = await client.post("/audio/transcriptions", data=data, files=files)
+            try:
+                with open(path, "rb") as f:
+                    files = {"file": (path.name, f, mime)}
+                    resp = await client.post("/audio/transcriptions", data=data, files=files)
+            except httpx.HTTPError as exc:
+                last_exc = AIError(f"ASR API 网络错误: {type(exc).__name__}: {exc}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                raise last_exc
             if resp.status_code < 400:
                 try:
                     return resp.json()

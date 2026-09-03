@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from .. import models
 from ..config import load_config
-from ..workers.task_runner import start_task
+from ..workers.task_runner import cancel_task, start_task
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -102,6 +102,9 @@ async def delete_task(task_id: str, force: bool = False):
         raise HTTPException(404, "任务不存在")
     if task.get("status") in ("running", "pending") and not force:
         raise HTTPException(400, "任务正在运行，无法删除（可加 ?force=true 强制删除）")
+    # 先取消在飞的后台协程（强制删除时任务可能还在转写/打轴），
+    # 避免删除后 ffmpeg 继续跑、LLM/ASR 继续计费、目录被重建
+    cancel_task(task_id)
     cfg = load_config()
     task_dir = Path(cfg.data.tasks_dir) / task_id
     if task_dir.exists():

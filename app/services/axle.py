@@ -5,7 +5,7 @@
 
 流程（ADR-0006）：
 1. LLM 分窗分析字幕 → 找出内容点并初步打轴
-2. 合并相邻内容点 + 长度约束（目标 1~3 分钟，硬上限 10 分钟）
+2. 合并相邻内容点 + 长度约束（目标时长与硬上限随配置，默认 30 秒~1 小时）
 3. ffmpeg silencedetect 静音点精修每个轴的起止（边界干净，不留杂音）
 """
 from __future__ import annotations
@@ -18,19 +18,24 @@ from .ffmpeg_utils import ffmpeg_bin, format_ts, run_async
 
 # ---------------- LLM 找内容点 ----------------
 
-FIND_POINTS_PROMPT = """你是专业的直播切片策划师。下面是一段直播录播的带时间戳字幕（每行格式 [HH:MM:SS] 内容）。
+def _build_prompt(axle_cfg) -> str:
+    """按当前配置动态生成找点提示词，长度口径与配置永不漂移。"""
+    t_min = int(getattr(axle_cfg, "target_min_seconds", 30))
+    t_max = int(getattr(axle_cfg, "target_max_seconds", 3600))
+    h_max = int(getattr(axle_cfg, "hard_max_seconds", 3600))
+    return f"""你是专业的直播切片策划师。下面是一段直播录播的带时间戳字幕（每行格式 [HH:MM:SS] 内容）。
 
 请找出所有值得切成二创切片的内容点（名场面、趣点、高光、爆点、话题、情绪拉满时刻），
 为每个内容点"打轴"：给出精确的起止时间（必须取自字幕行的时间戳，边界切在完整句子处，不截断半句话）。
 
 严格只输出一个 JSON 对象（不要代码块、不要解释文字），格式：
-{"points": [
-  {"start": "HH:MM:SS", "end": "HH:MM:SS", "title": "切片标题（15字内）", "reason": "为什么值得切", "score": 8}
-]}
+{{"points": [
+  {{"start": "HH:MM:SS", "end": "HH:MM:SS", "title": "切片标题（15字内）", "reason": "为什么值得切", "score": 8}}
+]}}
 
 要求：
 - start / end 必须使用字幕中出现过的时间戳（HH:MM:SS）
-- 每个内容点目标 1~3 分钟；内容自然更长时最多 10 分钟
+- 每个内容点目标 {t_min}~{t_max} 秒；内容自然更长时最多 {h_max} 秒
 - score 为 0~10 的整数，10 分 = 顶级名场面；低于 5 分的不要输出
 - reason 必须详细具体，包含"素材用途"分析：说明为什么值得切（起因、看点、情绪点、
   适合做什么类型的二创），并引用该片段内 2~4 条**原话素材**——原话逐字取自字幕行、
@@ -86,7 +91,7 @@ async def find_points(client, asr_segments: list[dict], axle_cfg) -> list[dict]:
         try:
             async with sem:
                 data = await client.analyze_document(
-                    text, FIND_POINTS_PROMPT, json_mode=True, max_tokens=4000
+                    text, _build_prompt(axle_cfg), json_mode=True, max_tokens=4000
                 )
         except AIError as exc:
             failures += 1
@@ -132,7 +137,7 @@ async def find_points(client, asr_segments: list[dict], axle_cfg) -> list[dict]:
 # ---------------- 合并 + 长度约束 ----------------
 
 def merge_points(points: list[dict], axle_cfg) -> list[dict]:
-    """合并相邻内容点，应用长度约束（目标 1~3 分钟，硬上限 10 分钟）。"""
+    """合并相邻内容点，应用长度约束（目标时长与硬上限均可配，默认 30 秒~1 小时）。"""
     target_min = float(getattr(axle_cfg, "target_min_seconds", 60))
     target_max = float(getattr(axle_cfg, "target_max_seconds", 180))
     hard_max = max(target_max, float(getattr(axle_cfg, "hard_max_seconds", 600)))

@@ -2,6 +2,7 @@
 
 设计（用户拍板 2026-09-03）：
 - 引擎：faster-whisper（复用 VideoCaptioner 已下载的 large-v2 模型）
+- 设备：CUDA float16（默认；CUDA 不可用自动回退 CPU int8）
 - VAD：faster-whisper 内置 Silero VAD（vad_filter=True）
 - 语言：逐音频块自动检测，仅在中文/日文间二选一（Vtuber 中日混播）
 - 精细化：继承卡卡字幕助手——按中日标点断句，每行 ≤30 字符（可配），
@@ -33,10 +34,22 @@ def _get_model(cfg):
         raise FileNotFoundError(f"本地 whisper 模型路径不存在: {model_path}")
     if model_path not in _model_cache:
         from faster_whisper import WhisperModel
-        device = str(getattr(cfg.asr, "local_device", "cpu") or "cpu")
-        compute = str(getattr(cfg.asr, "local_compute_type", "int8") or "int8")
+        device = str(getattr(cfg.asr, "local_device", "cuda") or "cuda")
+        compute = str(getattr(cfg.asr, "local_compute_type", "float16") or "float16")
+        # CUDA 可用性检测：GPU 缺失/异常时自动回退 CPU，避免任务直接失败。
+        # 注意：float16 等精度在 CPU 上不受支持，回退时一并换成 CPU 的 int8。
+        if device == "cuda":
+            try:
+                import ctranslate2
+                if ctranslate2.get_cuda_device_count() == 0:
+                    raise RuntimeError("no CUDA device")
+            except Exception as exc:  # noqa: BLE001
+                print(f"[local-asr] CUDA 不可用（{exc}），自动回退 CPU")
+                device = "cpu"
+                if compute in ("float16", "int8_float16", "bfloat16"):
+                    compute = "int8"
         # 限制 CPU 线程数：whisper 默认吃满全部核心会导致 uvicorn 事件循环饿死
-        # （HTTP 请求超时、WebUI 无响应），留出核心给服务本身
+        # （HTTP 请求超时、WebUI 无响应），留出核心给服务本身（仅 CPU 模式生效）
         cpu_threads = int(getattr(cfg.asr, "local_cpu_threads", 6) or 6)
         try:
             cpu_count = os.cpu_count() or 2
@@ -45,6 +58,8 @@ def _get_model(cfg):
             pass
         _model_cache[model_path] = WhisperModel(
             model_path, device=device, compute_type=compute, cpu_threads=cpu_threads)
+        print(f"[local-asr] 模型已加载: device={device}, compute_type={compute}, "
+              f"cpu_threads={cpu_threads}（路径 {model_path}）")
     return _model_cache[model_path]
 
 
@@ -146,9 +161,15 @@ async def transcribe_chunks_local(chunks_dir: str | Path, cfg) -> list[dict]:
             pass
 
         # 第一次：自动检测语言；非中/日则强制中文重转（中日二选一）
-        segments, info = await asyncio.to_thread(_run_transcribe, model, str(fp), None)
-        if (getattr(info, "language", "") or "") not in ("zh", "ja"):
-            segments, info = await asyncio.to_thread(_run_transcribe, model, str(fp), "zh")
+        # 单块失败只跳过该块继续（与云端引擎行为一致），不中断整个任务
+        try:
+            segments, info = await asyncio.to_thread(_run_transcribe, model, str(fp), None)
+            if (getattr(info, "language", "") or "") not in ("zh", "ja"):
+                segments, info = await asyncio.to_thread(_run_transcribe, model, str(fp), "zh")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[local-asr] {fp.name} 转写失败，跳过该块: {exc}")
+            offset += duration
+            continue
         refined = refine_segments(segments, max_chars)
         for s in refined:
             all_segments.append({

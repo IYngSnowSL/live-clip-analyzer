@@ -48,9 +48,9 @@ DEFAULTS: dict[str, Any] = {
         "language": "",              # 云端 ASR 语言代码；留空为自动识别
         "engine": "local",           # local=本地 faster-whisper（默认）/ api=云端 OpenAI 兼容 ASR
         "local_model_path": r"D:\AdobE\VideoCaptioner\AppData\models\faster-whisper-large-v2",
-        "local_device": "cpu",       # cpu / cuda
-        "local_compute_type": "int8",  # int8 / float16 / float32
-        "local_cpu_threads": 6,      # whisper CPU 线程数（留核给 Web 服务，避免转写时页面卡死）
+        "local_device": "cuda",      # cuda / cpu（CUDA 不可用时自动回退 CPU）
+        "local_compute_type": "float16",  # CUDA: float16 / int8_float16；CPU: int8 / float32
+        "local_cpu_threads": 6,      # whisper CPU 线程数（仅 CPU 模式生效；留核给 Web 服务）
         "subtitle_max_chars": 30,    # 字幕每行最大字符数（卡卡式精细化断句）
     },
     "axle": {
