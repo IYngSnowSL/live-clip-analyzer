@@ -15,6 +15,7 @@ from ..services import ffmpeg_utils as ff
 from ..services.ai_client import AIClient
 from ..services.asr import save_srt, transcribe_chunks
 from ..services.axle import build_axles
+from ..services.text_convert import to_simplified
 
 _background_tasks: dict[str, asyncio.Task] = {}
 # 全局任务并发上限：批量创建（最多 20 个）时避免同时打满 CPU / 内存 / 网络
@@ -132,6 +133,14 @@ async def _run_task(task_id: str, cfg, task) -> None:
         if not asr_segments:
             raise ValueError("ASR 转写结果为空，无法打轴")
 
+        # 3.4 繁→简统一：Whisper 系模型识别中文常输出繁体，字幕与打轴文本统一转简体
+        #（覆盖本地转写 / 云端 ASR / asr.json 缓存三条来源）
+        if bool(getattr(cfg.asr, "simplified_chinese", True)):
+            asr_segments = [
+                {**s, "text": to_simplified(str(s.get("text") or ""))}
+                for s in asr_segments
+            ]
+
         # 3.5 字幕附属文件：与视频同目录同名的 .srt（时间戳 + 文本）
         try:
             srt_path = await asyncio.to_thread(save_srt, video_path, asr_segments)
@@ -197,6 +206,12 @@ async def _run_reaxle(task_id: str, cfg, task, overrides: dict | None = None) ->
         asr_segments = json.loads(raw)
         if not asr_segments:
             raise ValueError("ASR 缓存为空，无法重新打轴")
+        # 缓存可能来自繁体输出的旧版本：重新打轴时同样统一转简体
+        if bool(getattr(cfg.asr, "simplified_chinese", True)):
+            asr_segments = [
+                {**s, "text": to_simplified(str(s.get("text") or ""))}
+                for s in asr_segments
+            ]
         video_path = Path(task["video_path"])
         if not video_path.exists():
             raise FileNotFoundError(f"视频文件不存在: {video_path}")

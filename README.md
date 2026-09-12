@@ -118,6 +118,7 @@ pip install -r requirements.txt
 | 提示端口 8000 被占用 | 关掉上一个还在运行的黑窗口，或重启电脑 |
 | 转写很慢 | 云端引擎取决于网络；有 NVIDIA 显卡请启用本地转写（见附录） |
 | 没有独立显卡能用吗 | 能。ASR 引擎保持「云端」即可，全部功能不受影响 |
+| 字幕出现繁体字 | v0.5.9 起自动转简体；想要词组级准确（如「軟體→软件」）执行一次 `pip install zhconv` |
 
 ### 附录：启用免费本地转写（可选，需 NVIDIA 显卡）
 
@@ -255,6 +256,7 @@ asr:                          # 本地 faster-whisper（engine: local 时生效�
   local_batched: true         # 动态批解码（--batched）：解码阶段显著提速
   local_beam_size: 5          # beam search 宽度（1=最快，5=默认质量）
   local_hotwords: ""          # 热词（空格分隔）：专名/梗词识别增强；留空不启用
+  simplified_chinese: true    # 字幕/打轴文本统一转简体（Whisper 常输出繁体）
   subtitle_max_chars: 30      # 字幕每行最大字符数（卡卡式精细化断句）
 ```
 

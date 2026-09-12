@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.5.9 — 字幕繁→简统一（Whisper 常输出繁体）
+
+- **新增繁→简转换**（`app/services/text_convert.py`）：字幕文件（SRT）与打轴文本
+  统一输出简体中文；覆盖本地转写 / 云端 ASR / asr.json 缓存三条来源，
+  重新打轴时也会转换旧缓存
+- **双保险实现**：优先 `zhconv`（纯 Python、MIT、词组级准确，已列入
+  requirements.txt）；未安装时用内置 **622 条常用繁体字表**兜底，零依赖可用
+- **新配置** `asr.simplified_chinese`（默认 true）：可关闭转换
+- 建议执行一次 `pip install zhconv` 获得词组级准确度（如「軟體→软件」）
+
 ## v0.5.8 — 修复批量转写命令重复传输入目录导致 unrecognized arguments
 
 - v0.5.5 引入的 `_batch_transcribe` 在 make_cmd 已追加输入目录的情况下，

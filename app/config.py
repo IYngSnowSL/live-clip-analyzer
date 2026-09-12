@@ -92,6 +92,7 @@ DEFAULTS: dict[str, Any] = {
         "local_beam_size": 5,        # beam search 宽度（1=最快，5=默认质量）
         "local_hotwords": "",        # 热词（空格分隔）：专名/梗词识别增强；留空不启用
         "subtitle_max_chars": 30,    # 字幕每行最大字符数（卡卡式精细化断句）
+        "simplified_chinese": True,  # 字幕/打轴文本统一转简体（Whisper 常输出繁体）
     },
     "axle": {
         "window_seconds": 600,        # LLM 找内容点的分窗大小（秒）
