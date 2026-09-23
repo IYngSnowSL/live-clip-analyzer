@@ -3,7 +3,7 @@
 > **📢 郑重声明**
 > 本软件代码内容全部由 AI 生成。
 
-> v0.5.6 ｜ 本地运行 ｜ Windows / Linux / macOS ｜ [MIT License](LICENSE)
+> v0.5.9 ｜ 本地运行 ｜ Windows / Linux / macOS ｜ [MIT License](LICENSE)
 
 ---
 
